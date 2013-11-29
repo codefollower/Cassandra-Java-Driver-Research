@@ -1,25 +1,6 @@
 DataStax Java Driver for Apache Cassandra
 =========================================
 
-## 安装
-
-mvn install -Dmaven.test.skip=true
-
-## 生成Eclipse工程
-
-mvn eclipse:eclipse <br><br>
-
-在eclipse中导入 <br>
-File->Import->General->Existing Projects into Workspace
-
-
-## 运行Client端例子
-
-在eclipse中直接运行my.test.cql.SimpleClient
-
-
-## 简介
-
 A Java client driver for Apache Cassandra. This driver works exclusively with
 the Cassandra Query Language version 3 (CQL3) and Cassandra's binary protocol.
 
