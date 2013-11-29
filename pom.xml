@@ -30,6 +30,7 @@
   <modules>
     <module>driver-core</module>
     <module>driver-examples</module>
+	<module>my-test</module>
   </modules>
 
   <properties>
