@@ -77,7 +77,7 @@ public class Configuration {
     }
 
     void register(Cluster.Manager manager) {
-        protocolOptions.register(manager);
+        protocolOptions.register(manager); //没做事
         poolingOptions.register(manager);
     }
 

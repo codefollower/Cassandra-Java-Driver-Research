@@ -45,6 +45,7 @@ import org.slf4j.LoggerFactory;
  * per application. However, a given session can only be set to one keyspace
  * at a time, so one instance per keyspace is necessary.
  */
+//相当于java.sql.Connection
 public class Session {
 
     private static final Logger logger = LoggerFactory.getLogger(Session.class);

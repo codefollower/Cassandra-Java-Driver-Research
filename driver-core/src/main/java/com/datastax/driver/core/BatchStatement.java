@@ -25,6 +25,8 @@ import java.util.List;
  * A statement that group a number of {@link Statement} so they get executed as
  * a batch.
  */
+//跟JDBC的java.sql.Statement.addBatch(String)类似 (批量sql)，
+//而不是java.sql.PreparedStatement.addBatch() (单条sql批量值)
 public class BatchStatement extends Statement {
 
     /**
@@ -70,6 +72,8 @@ public class BatchStatement extends Statement {
     }
 
     IdAndValues getIdAndValues() {
+        //如果是RegularStatement，则ids中放的是sql，
+        //如果是BoundStatement，放的是MD5Digest类型的id
         IdAndValues idAndVals = new IdAndValues(statements.size());
         for (Statement statement : statements) {
             if (statement instanceof RegularStatement) {
@@ -156,7 +160,9 @@ public class BatchStatement extends Statement {
     }
 
     static class IdAndValues {
-
+      
+        //如果是RegularStatement，则ids中放的是sql，
+        //如果是BoundStatement，放的是MD5Digest类型的id
         public final List<Object> ids;
         public final List<List<ByteBuffer>> values;
 

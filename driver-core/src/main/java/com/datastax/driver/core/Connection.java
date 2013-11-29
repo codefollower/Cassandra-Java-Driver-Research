@@ -251,14 +251,22 @@ class Connection {
      */
     public Future write(Message.Request request) throws ConnectionException, BusyConnectionException {
         Future future = new Future(request);
-        write(future);
+        write(future); //这里是异步的
         return future;
     }
 
     public ResponseHandler write(ResponseCallback callback) throws ConnectionException, BusyConnectionException {
 
         Message.Request request = callback.request();
-
+        
+        //Dispatcher.messageReceived(ChannelHandlerContext, MessageEvent)收到Message.Response后
+        //触发Future.onSet(Connection, Response) (Future类实现了ResponseCallback接口)
+        //而ResponseHandler类内部有streamId，并且持有Future类，
+        //在Dispatcher中的ConcurrentMap<Integer, ResponseHandler> pending字段中把streamId和ResponseHandler对应起来，
+        //写Message.Request时把streamId也写入，server端然后在写回streamId并封装在Message.Response中，
+        //这样就能知道Message.Response对应哪个ResponseHandler，从而也就知道是对应哪个Message.Request了
+        //Message.Response放在Future类里Future(实际上是在超类com.google.common.util.concurrent.AbstractFuture中)
+        //可以通过Future.get()方法获取Message.Response
         ResponseHandler handler = new ResponseHandler(this, callback);
         dispatcher.add(handler);
         request.setStreamId(handler.streamId);
@@ -715,7 +723,8 @@ class Connection {
             }
 
             //pipeline.addLast("debug", new LoggingHandler(InternalLogLevel.INFO));
-
+            //解码顺序(pipeline从上往下): Frame.Decoder => frameDecompressor => messageDecoder => connection.dispatcher
+            //编码顺序(pipeline从下往上): messageEncoder => frameCompressor => frameEncoder
             pipeline.addLast("frameDecoder", new Frame.Decoder());
             pipeline.addLast("frameEncoder", frameEncoder);
 

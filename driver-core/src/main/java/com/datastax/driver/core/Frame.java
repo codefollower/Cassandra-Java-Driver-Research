@@ -172,7 +172,7 @@ class Frame {
 
             Frame frame = (Frame)msg;
 
-            ChannelBuffer header = ChannelBuffers.buffer(Frame.Header.LENGTH);
+            ChannelBuffer header = ChannelBuffers.buffer(Frame.Header.LENGTH); //8字节Frame头
             header.writeByte(VERSION_AND_DIRECTION);
             header.writeByte(Header.Flag.serialize(frame.header.flags));
             header.writeByte(frame.header.streamId);

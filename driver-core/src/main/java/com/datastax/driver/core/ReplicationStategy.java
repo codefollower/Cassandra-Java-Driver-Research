@@ -39,7 +39,7 @@ abstract class ReplicationStrategy {
         try {
             if (strategyClass.contains("SimpleStrategy")) {
                 return new SimpleStrategy(Integer.parseInt(repFactorString));
-            } else if (strategyClass.contains("SimpleStrategy")) {
+            } else if (strategyClass.contains("NetworkTopologyStrategy")) { //原代码是SimpleStrategy，写错了，我把它改正了
                 Map<String, Integer> dcRfs = new HashMap<String, Integer>();
                 for (Map.Entry<String, String> entry : replicationOptions.entrySet())
                 {

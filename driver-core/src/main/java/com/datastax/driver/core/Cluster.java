@@ -60,6 +60,7 @@ import org.slf4j.LoggerFactory;
  * the nodes currently in the cluster as well as new nodes joining the cluster
  * subsequently.
  */
+//相当于java.sql.DriverManager
 public class Cluster {
 
     private static final Logger logger = LoggerFactory.getLogger(Cluster.class);
@@ -175,6 +176,7 @@ public class Cluster {
      */
     public Session connect(String keyspace) {
         Session session = connect();
+        //session.manager是Session.Manager，不是Cluster.Manager
         session.manager.setKeyspace(keyspace);
         return session;
     }

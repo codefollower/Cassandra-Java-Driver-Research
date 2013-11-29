@@ -196,6 +196,7 @@ class ControlConnection implements Host.StateListener {
     }
 
     private Connection tryConnect(Host host) throws ConnectionException, ExecutionException, InterruptedException {
+        //1. 发送STARTUP {CQL_VERSION=3.0.0}
         Connection connection = cluster.connectionFactory.open(host);
 
         try {
@@ -205,12 +206,27 @@ class ControlConnection implements Host.StateListener {
                 ProtocolEvent.Type.STATUS_CHANGE,
                 ProtocolEvent.Type.SCHEMA_CHANGE,
             });
+            //2. 发送REGISTER [TOPOLOGY_CHANGE, STATUS_CHANGE, SCHEMA_CHANGE]
+            //这里没有像cluster.connectionFactory.open(host)中引发Connection.initializeTransport()那样处理Response
+            //实际上也是返回READY
             connection.write(new Requests.Register(evs));
-
+            //Response r = connection.write(new Requests.Register(evs)).get(); //我加上的
+            //System.out.println(r); //我加上的
             logger.debug(String.format("[Control connection] Refreshing node list and token map"));
+            
+            //3. 发送:
+            //QUERY SELECT peer, data_center, rack, tokens, rpc_address FROM system.peers
+            //QUERY SELECT cluster_name, data_center, rack, tokens, partitioner FROM system.local WHERE key='local'
             refreshNodeListAndTokenMap(connection, cluster);
 
             logger.debug("[Control connection] Refreshing schema");
+            
+            //4. 发送:
+            //QUERY SELECT * FROM system.schema_keyspaces
+            //QUERY SELECT * FROM system.schema_columnfamilies
+            //QUERY SELECT * FROM system.schema_columns
+            //QUERY SELECT peer, data_center, rack, tokens, rpc_address FROM system.peers
+            //QUERY SELECT cluster_name, data_center, rack, tokens, partitioner FROM system.local WHERE key='local'
             refreshSchema(connection, null, null, cluster);
             return connection;
         } catch (BusyConnectionException e) {
@@ -244,7 +260,10 @@ class ControlConnection implements Host.StateListener {
             if (table != null)
                 whereClause += " AND columnfamily_name = '" + table + "'";
         }
-
+        //4. 发送:
+        //QUERY SELECT * FROM system.schema_keyspaces
+        //QUERY SELECT * FROM system.schema_columnfamilies
+        //QUERY SELECT * FROM system.schema_columns
         ResultSetFuture ksFuture = table == null
                                  ? new ResultSetFuture(null, new Requests.Query(SELECT_KEYSPACES + whereClause))
                                  : null;
@@ -259,7 +278,7 @@ class ControlConnection implements Host.StateListener {
         cluster.metadata.rebuildSchema(keyspace, table, ksFuture == null ? null : ksFuture.get(), cfFuture.get(), colsFuture.get());
         // If the table is null, we either rebuild all from scratch or have an updated keyspace. In both case, rebuild the token map
         // since some replication on some keyspace may have changed
-        if (table == null)
+        if (table == null) //tryConnect方法中会导致refreshNodeListAndTokenMap方法被调用两次
             refreshNodeListAndTokenMap(connection, cluster);
     }
 

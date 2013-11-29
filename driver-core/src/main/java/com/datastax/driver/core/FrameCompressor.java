@@ -59,7 +59,7 @@ abstract class FrameCompressor {
             Snappy.getNativeLibraryVersion();
         }
 
-        public Frame compress(Frame frame) throws IOException {
+        public Frame compress(Frame frame) throws IOException { //只是压缩Frame体，并不对Frame头压缩
             byte[] input = CBUtil.readRawBytes(frame.body);
             byte[] output = new byte[Snappy.maxCompressedLength(input.length)];
 

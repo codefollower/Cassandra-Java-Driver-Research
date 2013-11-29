@@ -29,6 +29,7 @@ import org.slf4j.LoggerFactory;
 /**
  * Keeps metadata on the connected cluster, including known nodes and schema definitions.
  */
+//元数据分了4层，由上往下是: Metadata => KeyspaceMetadata => TableMetadata => ColumnMetadata
 public class Metadata {
 
     private static final Logger logger = LoggerFactory.getLogger(Metadata.class);
@@ -41,12 +42,15 @@ public class Metadata {
 
     Metadata(Cluster.Manager cluster) {
         this.cluster = cluster;
+        //this.clusterName = cluster.clusterName; //我加上的
     }
 
     // Synchronized to make it easy to detect dropped keyspaces
     synchronized void rebuildSchema(String keyspace, String table, ResultSet ks, ResultSet cfs, ResultSet cols) {
 
+        //keyspace到CF的映射
         Map<String, List<Row>> cfDefs = new HashMap<String, List<Row>>();
+        //keyspace到CF再到列的映射
         Map<String, Map<String, Map<String, ColumnMetadata.Raw>>> colsDefs = new HashMap<String, Map<String, Map<String, ColumnMetadata.Raw>>>();
 
         // Gather cf defs
