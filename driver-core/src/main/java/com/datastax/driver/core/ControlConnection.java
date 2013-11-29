@@ -322,7 +322,9 @@ class ControlConnection implements Host.StateListener {
 
     private static void refreshNodeListAndTokenMap(Connection connection, Cluster.Manager cluster) throws ConnectionException, BusyConnectionException, ExecutionException, InterruptedException {
         // Make sure we're up to date on nodes and tokens
-
+        //对应下面两条SQL
+        //peersFuture = SELECT peer, data_center, rack, tokens, rpc_address FROM system.peers
+        //localFuture = SELECT cluster_name, data_center, rack, tokens, partitioner FROM system.local WHERE key='local'
         ResultSetFuture peersFuture = new ResultSetFuture(null, new Requests.Query(SELECT_PEERS));
         ResultSetFuture localFuture = new ResultSetFuture(null, new Requests.Query(SELECT_LOCAL));
         connection.write(peersFuture.callback);
