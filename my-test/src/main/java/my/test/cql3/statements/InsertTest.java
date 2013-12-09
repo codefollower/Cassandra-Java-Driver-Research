@@ -35,10 +35,12 @@ public class InsertTest extends TestBase {
     public void startInternal() throws Exception {
         tableName = "InsertTest";
         //create();
-        for (int i = 1; i < 100; i++) {
-            insert();
-            Thread.sleep(1000);
-        }
+        //        for (int i = 1; i < 100; i++) {
+        //            insert();
+        //            Thread.sleep(1000);
+        //        }
+        
+        insert();
         //select();
     }
 
@@ -102,6 +104,6 @@ public class InsertTest extends TestBase {
         //                " INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (2, true, 'cd')" + //
         //                " APPLY BATCH");
 
-        tryExecute("DELETE FROM " + tableName + " WHERE block_id in(1,2,3) IF f1='ab' AND short_hair=true");
+        //tryExecute("DELETE FROM " + tableName + " WHERE block_id in(1,2,3) IF f1='ab' AND short_hair=true");
     }
 }

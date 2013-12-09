@@ -34,31 +34,46 @@ public class DeleteTest extends TestBase {
     @Override
     public void startInternal() throws Exception {
         tableName = "DeleteTest";
-        //        create();
-        //        insert();
+        //create();
+        //insert();
         delete();
+        
+        //testDense();
+    }
+
+    void testDense() throws Exception {
+        tableName = "DeleteTest2";
+
+        cql = "CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id int, f2 int, f3 int, " //
+                + "PRIMARY KEY (block_id, f2, f3)) WITH COMPACT STORAGE";
+        //execute(cql);
+        
+        cql = "INSERT INTO " + tableName + "(block_id, f2, f3) VALUES (1, 2, 3)";
+        execute();
     }
 
     void create() throws Exception {
-        execute("DROP TABLE IF EXISTS " + tableName);
+        //execute("DROP TABLE IF EXISTS " + tableName);
 
         cql = "CREATE TABLE IF NOT EXISTS " + tableName //
-                + " ( block_id int, short_hair boolean, f1 text, " //
-                + "PRIMARY KEY (block_id))";
+                + " ( block_id int, short_hair boolean, f1 text, f2 int, f3 int, " //
+                + "PRIMARY KEY (block_id, f2, f3))";
         execute(cql);
     }
 
     void insert() throws Exception {
-        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (1, true, 'abbc')";
+        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1, f2, f3) VALUES (1, true, 'abbc', 1, 2)";
         SimpleStatement stmt = new SimpleStatement(cql);
         stmt.setConsistencyLevel(ConsistencyLevel.ONE);
         //stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);
         execute(stmt);
 
-        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (?, ?, ?) USING TIMESTAMP ? AND TTL ?";
+        cql = "INSERT INTO " + tableName
+                + "(block_id, short_hair, f1, f2, f3) VALUES (?, ?, ?, ?, ?) USING TIMESTAMP ? AND TTL ?";
         PreparedStatement statement = session.prepare(cql);
         BoundStatement boundStatement = new BoundStatement(statement);
-        session.execute(boundStatement.bind(1, true, "ab", 10000L, 100));
+        session.execute(boundStatement.bind(1, true, "ab", 3, 4, 10000L, 100));
     }
 
     void delete() throws Exception {
@@ -68,9 +83,19 @@ public class DeleteTest extends TestBase {
         //否则出错:Non PRIMARY KEY f1 found in where clause
         cql = "DELETE f1 FROM " + tableName + " WHERE f1='abbc'";
         cql = "DELETE f1 FROM " + tableName + " WHERE block_id=1";
+
+        cql = "DELETE f1 FROM " + tableName + " WHERE block_id=1 and f2=3 and f3=4";
+        cql = "DELETE FROM " + tableName + " WHERE block_id=1 and f2=3 and f3=4";
+        //where中必须指定PARTITION_KEY
+        //cql = "DELETE FROM " + tableName + " WHERE f2=3 and f3=4";
+        
+        //PARTITION_KEY和CLUSTERING_COLUMN不能出现在if子句中
+        cql = "DELETE FROM " + tableName + " WHERE block_id=1 and f2=3 and f3=4 if f2=3 and f3=4";
+        cql = "DELETE FROM " + tableName + " WHERE block_id=1 and f2=3 and f3=4 if short_hair=true and f1='abc'";
         execute();
 
         cql = "DELETE FROM " + tableName + " WHERE block_id=1";
+        //cql = "DELETE FROM " + tableName; //必须指定where
         execute();
 
         //错误:IN on the partition key is not supported with conditional updates
