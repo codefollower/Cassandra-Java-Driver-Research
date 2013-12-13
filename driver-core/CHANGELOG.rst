@@ -1,6 +1,12 @@
 CHANGELOG
 =========
 
+2.0.0:
+------
+
+- [improvement] Make most main objects interface to facilitate testing/mocking (JAVA-195)
+
+
 2.0.0-rc2:
 ----------
 
