@@ -95,6 +95,11 @@ public abstract class TestBase {
         }
     }
 
+    public void printResultSet() {
+        ResultSet results = session.execute(cql);
+        printResultSet(results);
+    }
+
     public void printResultSet(ResultSet results) {
         ColumnDefinitions cd = results.getColumnDefinitions();
         int size = cd.size();

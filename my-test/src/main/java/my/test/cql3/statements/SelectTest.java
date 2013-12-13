@@ -34,7 +34,10 @@ public class SelectTest extends TestBase {
         //tableName = "SelectTest";
         //create();
         //insert();
-        test();
+        //test();
+
+        //test_getSliceCommands();
+        test_getKeyBounds();
     }
 
     void create() {
@@ -58,6 +61,41 @@ public class SelectTest extends TestBase {
             session.execute("INSERT INTO users (user_id, f1, age, first_name, last_name, emails) " //
                     + "VALUES('frodo', 11, " + i + ", 'Frodo', 'Baggins', {'f@baggins.com','baggins@gmail.com'});");
 
+    }
+
+    void test_getSliceCommands() throws Exception {
+        cql = "SELECT * FROM users WHERE user_id = 'frodo' AND f1 = 11";
+
+        //只有最后一个才允许在in中指定多个值
+        cql = "SELECT * FROM users WHERE user_id in ('frodo','2')";
+        cql = "SELECT * FROM users WHERE user_id in ('frodo')";
+
+        cql = "SELECT * FROM users WHERE user_id in ('frodo') AND f1 = 11";
+
+        cql = "SELECT * FROM users WHERE user_id = 'frodo' AND f1 in(11, 12)";
+
+        cql = "SELECT * FROM users WHERE user_id = 'frodo' AND f1 in()";
+        printResultSet();
+    }
+    
+    void test_getKeyBounds() throws Exception {
+        cql = "SELECT * FROM users WHERE user_id = 'frodo' AND f1 = 11";
+
+        //只有最后一个才允许在in中指定多个值
+        cql = "SELECT * FROM users WHERE user_id in ('frodo','2')";
+        cql = "SELECT * FROM users WHERE user_id in ('frodo')";
+
+        cql = "SELECT * FROM users WHERE user_id in ('frodo') AND f1 = 11";
+
+        cql = "SELECT * FROM users WHERE user_id = 'frodo' AND f1 in(11, 12)";
+
+        cql = "SELECT * FROM users WHERE token(user_id) >= 22 AND token(f1) = 11";
+        
+        //不能这样用，得加索引字段
+        cql = "SELECT * FROM users WHERE user_id = 'frodo'";
+        
+        cql = "SELECT * FROM users WHERE user_id = 'frodo' AND age = 20 ALLOW FILTERING";
+        printResultSet();
     }
 
     public void test() {
@@ -112,13 +150,13 @@ public class SelectTest extends TestBase {
         cql = "SELECT user_id as uid FROM users WHERE age>=10 ALLOW FILTERING";
 
         cql = "SELECT user_id.a FROM users WHERE age>=10 ALLOW FILTERING";
-        
+
         cql = "SELECT * FROM users WHERE age=10";
-        
+
         cql = "SELECT * FROM users WHERE age=10 ORDER BY age DESC";
-        
+
         cql = "SELECT * FROM users WHERE age>=10 LIMIT 2 ALLOW FILTERING";
-        
+
         SimpleStatement stmt = new SimpleStatement(cql);
         stmt.setFetchSize(20);
         ResultSet results = session.execute(stmt);
