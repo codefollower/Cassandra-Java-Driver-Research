@@ -15,8 +15,6 @@
  */
 package com.datastax.driver.core;
 
-import com.datastax.driver.core.exceptions.*;
-
 /**
  * A session holds connections to a Cassandra cluster, allowing it to be queried.
  *

@@ -95,6 +95,8 @@ public class SelectTest extends TestBase {
         cql = "SELECT * FROM users WHERE user_id = 'frodo'";
         
         cql = "SELECT * FROM users WHERE user_id = 'frodo' AND age = 20 ALLOW FILTERING";
+        
+        cql = "SELECT * FROM users WHERE user_id = 'frodo' AND f1 in(11, 12)";
         printResultSet();
     }
 
