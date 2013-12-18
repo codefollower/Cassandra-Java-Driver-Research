@@ -108,6 +108,10 @@ public class BatchStatement extends Statement {
      *
      * @param statement the new statement to add.
      * @return this batch statement.
+     *
+     * @throws IllegalStateException if adding the new statement means that this
+     * {@code BatchStatement} has more than 65536 statements (since this is the maximum number
+     * of statements for a BatchStatement allowed by the underlying protocol).
      */
     public BatchStatement add(Statement statement) {
 
@@ -119,6 +123,8 @@ public class BatchStatement extends Statement {
                 add(subStatements);
             }
         } else {
+            if (statements.size() >= 0xFFFF)
+                throw new IllegalStateException("Batch statement cannot contain more than " + 0xFFFF + " statements.");
             statements.add(statement);
         }
         return this;
