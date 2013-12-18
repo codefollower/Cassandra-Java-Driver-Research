@@ -21,31 +21,16 @@ package my.test.cql3.statements;
 
 import my.test.TestBase;
 
-public class TypeTest extends TestBase {
-
+public class UserTest extends TestBase {
     public static void main(String[] args) throws Exception {
-        new TypeTest().start();
+        new UserTest().start();
     }
 
     @Override
     public void startInternal() throws Exception {
-        dropTest();
-        createTest();
-        alterTest();
+        execute("CREATE USER UserTest WITH PASSWORD 'mypassword' SUPERUSER");
+        execute("ALTER USER UserTest WITH PASSWORD 'mypassword2' SUPERUSER");
+        execute("LIST USERS");
+        execute("DROP USER UserTest");
     }
-
-    void createTest() throws Exception {
-        execute("CREATE TYPE IF NOT EXISTS TypeTest(myint int, mytext text)");
-    }
-
-    void alterTest() throws Exception {
-        tryExecute("ALTER TYPE TypeTest ALTER myint TYPE boolean");
-        execute("ALTER TYPE TypeTest ADD myfloat float");
-        execute("ALTER TYPE TypeTest RENAME myint TO mybigint AND myfloat TO myf");
-    }
-
-    void dropTest() throws Exception {
-        execute("DROP TYPE IF EXISTS TypeTest");
-    }
-
 }

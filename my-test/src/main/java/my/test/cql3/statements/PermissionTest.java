@@ -21,31 +21,17 @@ package my.test.cql3.statements;
 
 import my.test.TestBase;
 
-public class TypeTest extends TestBase {
-
+public class PermissionTest extends TestBase {
     public static void main(String[] args) throws Exception {
-        new TypeTest().start();
+        new PermissionTest().start();
     }
 
     @Override
     public void startInternal() throws Exception {
-        dropTest();
-        createTest();
-        alterTest();
+        execute("CREATE TABLE IF NOT EXISTS PermissionTest ( f1 int primary key, f2 int)");
+        tryExecute("CREATE USER User_PermissionTest WITH PASSWORD 'mypassword' SUPERUSER");
+        execute("GRANT SELECT PERMISSION ON TABLE " + KEYSPACE_NAME + ".PermissionTest TO User_PermissionTest");
+        execute("LIST SELECT PERMISSION  ON TABLE " + KEYSPACE_NAME + ".PermissionTest OF User_PermissionTest");
+        execute("REVOKE SELECT PERMISSION ON TABLE " + KEYSPACE_NAME + ".PermissionTest FROM User_PermissionTest");
     }
-
-    void createTest() throws Exception {
-        execute("CREATE TYPE IF NOT EXISTS TypeTest(myint int, mytext text)");
-    }
-
-    void alterTest() throws Exception {
-        tryExecute("ALTER TYPE TypeTest ALTER myint TYPE boolean");
-        execute("ALTER TYPE TypeTest ADD myfloat float");
-        execute("ALTER TYPE TypeTest RENAME myint TO mybigint AND myfloat TO myf");
-    }
-
-    void dropTest() throws Exception {
-        execute("DROP TYPE IF EXISTS TypeTest");
-    }
-
 }

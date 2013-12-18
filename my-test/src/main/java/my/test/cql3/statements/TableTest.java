@@ -28,7 +28,7 @@ public class TableTest extends TestBase {
 
     @Override
     public void startInternal() throws Exception {
-        tableName = "TableTest";
+        tableName = "TableTest3";
 
         test_RawStatement_prepare();
 
@@ -39,7 +39,7 @@ public class TableTest extends TestBase {
 
     //按org.apache.cassandra.cql3.statements.CreateTableStatement.RawStatement.prepare()中的代码测试
     public void test_RawStatement_prepare() throws Exception {
-        tryExecute("DROP TABLE IF EXISTS " + tableName);
+        //tryExecute("DROP TABLE IF EXISTS " + tableName);
 
         //表名不能使用中文
         tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + "中sss ( block_id uuid)");

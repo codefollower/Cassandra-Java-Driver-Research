@@ -29,7 +29,7 @@ public abstract class TestBase {
         so.setConnectTimeoutMillis(60 * 60 * 1000);
         builder.withSocketOptions(so);
 
-        //builder.withCredentials("cassandra", "cassandra");
+        builder.withCredentials("cassandra", "cassandra");
 
         PoolingOptions po = new PoolingOptions();
         po.setCoreConnectionsPerHost(HostDistance.LOCAL, 1);
@@ -132,6 +132,12 @@ public abstract class TestBase {
                     break;
                 case COUNTER:
                     System.out.print(row.getLong(i));
+                    break;
+                case BOOLEAN:
+                    System.out.print(row.getBool(i));
+                    break;
+                case DOUBLE:
+                    System.out.print(row.getDouble(i));
                     break;
                 default:
                     System.out.print(row.getString(i));

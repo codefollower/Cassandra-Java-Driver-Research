@@ -34,7 +34,7 @@ public class InsertTest extends TestBase {
     @Override
     public void startInternal() throws Exception {
         tableName = "InsertTest";
-        //create();
+        create();
         //        for (int i = 1; i < 100; i++) {
         //            insert();
         //            Thread.sleep(1000);
@@ -62,7 +62,7 @@ public class InsertTest extends TestBase {
 
     void insert() throws Exception {
         int i = 9;
-        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (" + i + ", true, 'ab" + i + "')";
+        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (" + i + ", true, (text)'ab" + i + "')";
         SimpleStatement stmt = new SimpleStatement(cql);
         stmt.setConsistencyLevel(ConsistencyLevel.TWO);
         stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);
