@@ -30,11 +30,49 @@ public class TableTest extends TestBase {
     public void startInternal() throws Exception {
         tableName = "TableTest3";
 
-        test_RawStatement_prepare();
+        test_CQL3Type();
 
-        test_CFPropDefs_validate();
+        //        test_RawStatement_prepare();
+        //
+        //        test_CFPropDefs_validate();
+        //
+        //        test_CreateTableStatement_applyPropertiesTo();
+    }
 
-        test_CreateTableStatement_applyPropertiesTo();
+    void test_CQL3Type() throws Exception {
+        //自定义一个叫"name"的类型
+        execute("CREATE TYPE IF NOT EXISTS name (firstname text, lastname text)");
+
+        cql = "CREATE TABLE IF NOT EXISTS " + tableName + "(" //
+                //对应所有org.apache.cassandra.cql3.CQL3Type.Native
+                //16个本地类型
+                + "f_ascii ascii primary key," //
+                + "f_bigint bigint," //
+                + "f_blob blob," //
+                + "f_boolean boolean," //
+                //+ "f_counter counter," //counter类列的列不能跟其他列一起定义
+                + "f_decimal decimal," //
+                + "f_double double," //
+                + "f_float float," //
+                + "f_inet inet," //
+                + "f_int int," //
+                + "f_text text," //
+                + "f_timestamp timestamp," //
+                + "f_uuid uuid," //
+                + "f_varchar varchar," //
+                + "f_varint varint," //
+                + "f_timeuuid timeuuid," //
+                //对应org.apache.cassandra.cql3.CQL3Type.Custom
+                + "f_custom1 'org.apache.cassandra.db.marshal.UTF8Type'," //
+                + "f_custom2 'UTF8Type'," //
+                //对应org.apache.cassandra.cql3.CQL3Type.Collection
+                + "f_map map<int, int>," //
+                + "f_list list<int>," //
+                + "f_set set<int>," //
+                //对应org.apache.cassandra.cql3.CQL3Type.UserDefined
+                + "f_UserDefined name," //最后一个字段后面的逗号可以有也可以没有
+                + ")";
+        tryExecute();
     }
 
     //按org.apache.cassandra.cql3.statements.CreateTableStatement.RawStatement.prepare()中的代码测试
