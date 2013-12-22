@@ -34,9 +34,133 @@ public class TableTest extends TestBase {
 
         //test_RawStatement_prepare();
         //
-                test_CFPropDefs_validate();
+        //        test_CFPropDefs_validate();
         //
         //        test_CreateTableStatement_applyPropertiesTo();
+
+        //test_getColumns();
+        test_AlterTableStatement();
+    }
+
+    void test_AlterTableStatement() throws Exception {
+        //test_Alter_Add();
+        //test_Alter_Alter();
+        //test_Alter_Drop();
+        test_Alter_With();
+        //test_Alter_Rename();
+    }
+
+    void test_Alter_Add() throws Exception {
+        tableName = "TableTest_Alter_Add";
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, f1 int, short_hair boolean," //
+                + "PRIMARY KEY (block_id, f1)) WITH COMPACT STORAGE");
+
+        //错误是: Cannot add new column to a compact CF
+        tryExecute("ALTER TABLE " + tableName + " ADD f2 int");
+
+        tableName = "TableTest_Alter_Add2";
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, f1 int, short_hair boolean," //
+                + "PRIMARY KEY (block_id, f1))");
+
+        //错误是:Invalid column name block_id because it conflicts with a PRIMARY KEY part
+        tryExecute("ALTER TABLE " + tableName + " ADD block_id int");
+        //错误是:Invalid column name block_id because it conflicts with a PRIMARY KEY part
+        tryExecute("ALTER TABLE " + tableName + " ADD f1 int");
+        //错误是:Invalid column name short_hair because it conflicts with an existing column
+        tryExecute("ALTER TABLE " + tableName + " ADD short_hair int");
+
+        tableName = "TableTest_Alter_Add3";
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, f1 int, short_hair boolean," //
+                + "PRIMARY KEY (block_id)) WITH COMPACT STORAGE");
+
+        //错误是:Cannot use collection types with non-composite PRIMARY KEY
+        tryExecute("ALTER TABLE " + tableName + " ADD f2 list<int>");
+    }
+
+    void test_Alter_Alter() throws Exception {
+        tableName = "TableTest_Alter_Alter";
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, f1 int, " //
+                + "PRIMARY KEY (block_id))");
+
+        //错误是:Cell f2 was not found in table tabletest_alter_alter
+        tryExecute("ALTER TABLE " + tableName + " ALTER f2 TYPE bigint");
+
+        tableName = "TableTest_Alter_Alter2";
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, f1 int, f2 int,  " //
+                + "PRIMARY KEY (block_id, f1))");
+
+        //错误是:counter type is not supported for PRIMARY KEY part block_id
+        tryExecute("ALTER TABLE " + tableName + " ALTER block_id TYPE counter");
+
+        tableName = "TableTest_Alter_Alter3";
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, f1 int, f2 int,  " //
+                + "PRIMARY KEY ((block_id, f1)))");
+
+        //错误是:Cannot change block_id from type uuid to type int: types are incompatible.
+        tryExecute("ALTER TABLE " + tableName + " ALTER block_id TYPE int");
+    }
+
+    void test_Alter_Drop() throws Exception {
+        tableName = "TableTest_Alter_Drop";
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, f1 int, " //
+                + "PRIMARY KEY (block_id)) WITH COMPACT STORAGE");
+
+        //错误是:Cannot drop columns from a non-CQL3 CF
+        tryExecute("ALTER TABLE " + tableName + " DROP block_id");
+
+        tableName = "TableTest_Alter_Drop2";
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, f1 int, " //
+                + "PRIMARY KEY (block_id))");
+
+        //错误是:Cell f2 was not found in table tabletest_alter_drop2
+        tryExecute("ALTER TABLE " + tableName + " DROP f2");
+
+        //错误是:Cannot drop PRIMARY KEY part block_id
+        tryExecute("ALTER TABLE " + tableName + " DROP block_id");
+    }
+
+    void test_Alter_With() throws Exception {
+        tableName = "TableTest_Alter_With";
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, f1 int, " //
+                + "PRIMARY KEY (block_id)) WITH COMPACT STORAGE");
+
+        //tryExecute("ALTER TABLE " + tableName + " WITH read_repair_chance=0.9");
+
+        //语法错误是:line 0:-1 no viable alternative at input '<EOF>'
+        //不能只加WITH
+        tryExecute("ALTER TABLE " + tableName + " WITH");
+    }
+
+    void test_Alter_Rename() throws Exception {
+        tableName = "TableTest_Alter_Rename";
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, f1 int, " //
+                + "PRIMARY KEY (block_id))");
+
+        //错误是:Cannot rename non PRIMARY KEY part f1
+        //只能重命名PRIMARY KEY
+        tryExecute("ALTER TABLE " + tableName + " RENAME f1 TO f2");
+
+        tryExecute("ALTER TABLE " + tableName + " RENAME block_id TO f2");
+    }
+
+    void test_getColumns() throws Exception {
+        //        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+        //                + " ( block_id uuid, f1 int, short_hair boolean," //
+        //                + "PRIMARY KEY (block_id)) WITH COMPACT STORAGE");
+        //        
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, f1 int, short_hair boolean," //
+                + "PRIMARY KEY (block_id))");
     }
 
     void test_CQL3Type() throws Exception {
@@ -311,12 +435,12 @@ public class TableTest extends TestBase {
         cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
                 "WITH compaction = { 'class' : 'LeveledCompactionStrategy', 'bucket_low' : 0.9 }";
         tryExecute();
-        
+
         //
         cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
                 "WITH compaction = { 'class' : 'SizeTieredCompactionStrategy', 'min_threshold' : 1, 'max_threshold' : 5  }";
         tryExecute();
-        
+
         cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
                 "WITH compaction = { 'class' : 'LeveledCompactionStrategy', 'min_threshold' : 1, 'max_threshold' : 5  }";
         tryExecute();
