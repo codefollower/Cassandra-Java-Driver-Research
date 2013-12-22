@@ -30,11 +30,11 @@ public class TableTest extends TestBase {
     public void startInternal() throws Exception {
         tableName = "TableTest3";
 
-        test_CQL3Type();
+        //test_CQL3Type();
 
-        //        test_RawStatement_prepare();
+        //test_RawStatement_prepare();
         //
-        //        test_CFPropDefs_validate();
+                test_CFPropDefs_validate();
         //
         //        test_CreateTableStatement_applyPropertiesTo();
     }
@@ -79,8 +79,15 @@ public class TableTest extends TestBase {
     public void test_RawStatement_prepare() throws Exception {
         //tryExecute("DROP TABLE IF EXISTS " + tableName);
 
-        //表名不能使用中文
-        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + "中sss ( block_id uuid)");
+        //表名不能使用中文，在语法分析阶段就能检查出来了，这里是IDENT的场景
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + "中 ( block_id uuid)");
+
+        //表名不能使用中文，但是不能在语法分析阶段检查出来，这里是QUOTED_NAME的场景(用双引号括起来)
+        //在RawStatement_prepare的if (!columnFamily().matches("\\w+"))中检查
+        tryExecute("CREATE TABLE IF NOT EXISTS \"" + tableName + "中\" ( block_id uuid)");
+
+        //下划线可以
+        //tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + "_ddd ( block_id uuid)");
 
         //表名不能超过48个字符
         tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + "toolonglonglonglonglonglonglong ( block_id uuid)");
@@ -303,6 +310,15 @@ public class TableTest extends TestBase {
 
         cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
                 "WITH compaction = { 'class' : 'LeveledCompactionStrategy', 'bucket_low' : 0.9 }";
+        tryExecute();
+        
+        //
+        cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
+                "WITH compaction = { 'class' : 'SizeTieredCompactionStrategy', 'min_threshold' : 1, 'max_threshold' : 5  }";
+        tryExecute();
+        
+        cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
+                "WITH compaction = { 'class' : 'LeveledCompactionStrategy', 'min_threshold' : 1, 'max_threshold' : 5  }";
         tryExecute();
 
         //crc_check_chance的取值是闭区间[0.0, 1.0]
