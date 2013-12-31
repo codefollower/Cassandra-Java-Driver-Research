@@ -17,21 +17,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package my.test.cql3.statements;
+package my.test.cql3;
 
 import my.test.TestBase;
 
-public class PermissionTest extends TestBase {
+public class TriggerTest extends TestBase {
+
     public static void main(String[] args) throws Exception {
-        new PermissionTest().start();
+        new TriggerTest().start();
     }
+
+    String triggerName;
 
     @Override
     public void startInternal() throws Exception {
-        execute("CREATE TABLE IF NOT EXISTS PermissionTest ( f1 int primary key, f2 int)");
-        tryExecute("CREATE USER User_PermissionTest WITH PASSWORD 'mypassword' SUPERUSER");
-        execute("GRANT SELECT PERMISSION ON TABLE " + KEYSPACE_NAME + ".PermissionTest TO User_PermissionTest");
-        execute("LIST SELECT PERMISSION  ON TABLE " + KEYSPACE_NAME + ".PermissionTest OF User_PermissionTest");
-        execute("REVOKE SELECT PERMISSION ON TABLE " + KEYSPACE_NAME + ".PermissionTest FROM User_PermissionTest");
+        tableName = "TriggerTest";
+        createTest();
+        dropTest();
+    }
+
+    void createTest() throws Exception {
+        triggerName = tableName + "_mytrigger";
+        //execute("DROP TABLE IF EXISTS " + tableName);
+        execute("CREATE TABLE IF NOT EXISTS " + tableName + " (pk int PRIMARY KEY, c text)");
+        execute("CREATE TRIGGER " + triggerName + " ON " + tableName + " USING 'my.test.trigger.MyTrigger'");
+    }
+
+    void dropTest() throws Exception {
+        execute("DROP TRIGGER " + triggerName + " ON " + tableName);
     }
 }

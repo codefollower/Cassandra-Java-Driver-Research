@@ -27,6 +27,6 @@ mvn eclipse:eclipse <br><br>
 File->Import->General->Existing Projects into Workspace
 
 
-## 运行Client端例子
+## 运行测试例子
 
-在eclipse中直接运行my.test.cql.SimpleClient
+在eclipse中可以直接运行my.test包中的例子
