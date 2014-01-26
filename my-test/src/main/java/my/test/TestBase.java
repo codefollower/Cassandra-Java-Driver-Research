@@ -64,9 +64,9 @@ public abstract class TestBase {
 
     public void stop() throws Exception {
         if (session != null)
-            session.shutdown();
+            session.close();
         if (cluster != null)
-            cluster.shutdown();
+            cluster.close();
     }
 
     public abstract void startInternal() throws Exception;

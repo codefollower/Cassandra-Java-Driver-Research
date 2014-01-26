@@ -74,7 +74,7 @@ public class SimpleClient {
     }
 
     public void close() {
-        cluster.shutdown();
+        cluster.close();
     }
 
     public void createSchema() {

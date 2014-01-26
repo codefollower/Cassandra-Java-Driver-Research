@@ -15,6 +15,8 @@
  */
 package com.datastax.driver.core;
 
+import java.io.Closeable;
+
 /**
  * A session holds connections to a Cassandra cluster, allowing it to be queried.
  *
@@ -28,7 +30,7 @@ package com.datastax.driver.core;
  * at a time, so one instance per keyspace is necessary.
  */
 //相当于java.sql.Connection
-public interface Session {
+public interface Session extends Closeable {
 
     /**
      * Executes the provided query.
@@ -172,27 +174,35 @@ public interface Session {
 
     /**
      * Initiates a shutdown of this session instance.
-     *
+     * <p>
      * This method is asynchronous and return a future on the completion
      * of the shutdown process. As soon a the session is shutdown, no
      * new request will be accepted, but already submitted queries are
-     * allowed to complete. Shutdown closes all connections of this
-     * session  and reclaims all resources used by it.
+     * allowed to complete. This method closes all connections of this
+     * session and reclaims all resources used by it.
      * <p>
      * If for some reason you wish to expedite this process, the
-     * {@link ShutdownFuture#force} can be called on the result future.
+     * {@link CloseFuture#force} can be called on the result future.
      * <p>
-     * This method has no particular effect if the session was already shut
-     * down (in which case the returned future will return immediately).
+     * This method has no particular effect if the session was already closed
+     * (in which case the returned future will return immediately).
      * <p>
-     * Note that if you want to shut down the full {@code Cluster} instance
-     * this session is part of, you should use {@link Cluster#shutdown} instead
+     * Note that if you want to close the full {@code Cluster} instance
+     * this session is part of, you should use {@link Cluster#close} instead
      * (which will call this method for all sessions but also release some
      * additional resources).
      *
      * @return a future on the completion of the shutdown process.
      */
-    public ShutdownFuture shutdown();
+    public CloseFuture closeAsync();
+
+    /**
+     * Initiates a shutdown of this session instance and blocks until
+     * that shutdown completes.
+     * <p>
+     * This method is a shortcut for {@code closeAsync().get()}.
+     */
+    public void close();
 
     /**
      * Returns the {@code Cluster} object this session is part of.

@@ -78,12 +78,12 @@ class ControlConnection implements Host.StateListener {
         setNewConnection(reconnectInternal());
     }
 
-    public ShutdownFuture shutdown() {
+    public CloseFuture closeAsync() {
         // We don't have to be fancy here. We just set a flag so that we stop trying to reconnect (and thus change the
         // connection used) and shutdown the current one.
         isShutdown = true;
         Connection connection = connectionRef.get();
-        return connection == null ? ShutdownFuture.immediateFuture() : connection.close();
+        return connection == null ? CloseFuture.immediateFuture() : connection.closeAsync();
     }
 
     private void reconnect() {
@@ -146,7 +146,7 @@ class ControlConnection implements Host.StateListener {
         logger.debug("[Control connection] Successfully connected to {}", newConnection.address);
         Connection old = connectionRef.getAndSet(newConnection);
         if (old != null && !old.isClosed())
-            old.close();
+            old.closeAsync();
     }
 
     private Connection reconnectInternal() {
@@ -373,10 +373,10 @@ class ControlConnection implements Host.StateListener {
                 logger.debug("System.peers on node {} has a line for itself. This is not normal but is a known problem of some DSE version. Ignoring the entry.", connection.address);
                 continue;
             } else if (addr == null) {
-                logger.error("No rpc_address found for host {} in {}'s peers system table. That should not happen but using address {} instead", addr, connection.address, addr);
+                logger.error("No rpc_address found for host {} in {}'s peers system table. That should not happen but using address {} instead", peer, connection.address, peer);
                 addr = peer;
             } else if (addr.equals(bindAllAddress)) {
-                logger.warn("Host {} has 0.0.0.0 as rpc_address, using listen_address ({}) to contact it instead. If this is incorrect you should avoid the use of 0.0.0.0 server side.");
+                logger.warn("Found host with 0.0.0.0 as rpc_address, using listen_address ({}) to contact it instead. If this is incorrect you should avoid the use of 0.0.0.0 server side.", peer);
                 addr = peer;
             }
 
