@@ -24,7 +24,7 @@ public abstract class Clause extends Utils.Appendeable {
 
     private Clause(String name) {
         this.name = name;
-    };
+    }
 
     String name() {
         return name;
@@ -88,7 +88,7 @@ public abstract class Clause extends Utils.Appendeable {
             }
 
             Utils.appendName(name, sb).append(" IN (");
-            Utils.joinAndAppendValues(sb, ",", values, variables).append(")");
+            Utils.joinAndAppendValues(sb, ",", values, variables).append(')');
         }
 
         @Override

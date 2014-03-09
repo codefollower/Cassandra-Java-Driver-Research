@@ -30,6 +30,7 @@ import java.text.ParseException;
 import java.text.ParsePosition;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.regex.Pattern;
 
 import com.datastax.driver.core.exceptions.InvalidTypeException;
 import com.datastax.driver.core.utils.Bytes;
@@ -216,26 +217,26 @@ abstract class TypeCodec<T> {
         private static final Charset utf8Charset = Charset.forName("UTF-8");
         private static final Charset asciiCharset = Charset.forName("US-ASCII");
 
-        // We don't want to recreate the decoders/encoders everytime and they're not threadSafe.
-        private static ThreadLocal<CharsetDecoder> utf8Decoders = new ThreadLocal<CharsetDecoder>() {
+        // We don't want to recreate the decoders/encoders every time and they're not threadSafe.
+        private static final ThreadLocal<CharsetDecoder> utf8Decoders = new ThreadLocal<CharsetDecoder>() {
             @Override
             protected CharsetDecoder initialValue() {
                 return utf8Charset.newDecoder();
             }
         };
-        private static ThreadLocal<CharsetDecoder> asciiDecoders = new ThreadLocal<CharsetDecoder>() {
+        private static final ThreadLocal<CharsetDecoder> asciiDecoders = new ThreadLocal<CharsetDecoder>() {
             @Override
             protected CharsetDecoder initialValue() {
                 return asciiCharset.newDecoder();
             }
         };
-        private static ThreadLocal<CharsetEncoder> utf8Encoders = new ThreadLocal<CharsetEncoder>() {
+        private static final ThreadLocal<CharsetEncoder> utf8Encoders = new ThreadLocal<CharsetEncoder>() {
             @Override
             protected CharsetEncoder initialValue() {
                 return utf8Charset.newEncoder();
             }
         };
-        private static ThreadLocal<CharsetEncoder> asciiEncoders = new ThreadLocal<CharsetEncoder>() {
+        private static final ThreadLocal<CharsetEncoder> asciiEncoders = new ThreadLocal<CharsetEncoder>() {
             @Override
             protected CharsetEncoder initialValue() {
                 return asciiCharset.newEncoder();
@@ -576,15 +577,20 @@ abstract class TypeCodec<T> {
             "yyyy-MM-dd HH:mm:ss",
             "yyyy-MM-dd HH:mmZ",
             "yyyy-MM-dd HH:mm:ssZ",
+            "yyyy-MM-dd HH:mm:ss.SSS",
+            "yyyy-MM-dd HH:mm:ss.SSSZ",
             "yyyy-MM-dd'T'HH:mm",
             "yyyy-MM-dd'T'HH:mmZ",
             "yyyy-MM-dd'T'HH:mm:ss",
             "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",
+            "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
             "yyyy-MM-dd",
             "yyyy-MM-ddZ"
         };
 
         public static final DateCodec instance = new DateCodec();
+        private static final Pattern IS_LONG_PATTERN = Pattern.compile("^-?\\d+$");
 
         private DateCodec() {}
 
@@ -593,7 +599,7 @@ abstract class TypeCodec<T> {
          * to parse date strings). It is copied here so as to not create a dependency on apache commons "just
          * for this".
          */
-        private Date parseDate(String str, final String[] parsePatterns) throws ParseException {
+        private static Date parseDate(String str, final String[] parsePatterns) throws ParseException {
             SimpleDateFormat parser = new SimpleDateFormat();
             parser.setLenient(false);
 
@@ -615,7 +621,7 @@ abstract class TypeCodec<T> {
 
         @Override
         public Date parse(String value) {
-            if (value.matches("^\\d+$")) {
+            if (IS_LONG_PATTERN.matcher(value).matches()) {
                 try {
                     return new Date(Long.parseLong(value));
                 } catch (NumberFormatException e) {

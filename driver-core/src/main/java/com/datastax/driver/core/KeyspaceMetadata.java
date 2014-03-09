@@ -53,7 +53,7 @@ public class KeyspaceMetadata {
 
         Map<String, String> replicationOptions = new HashMap<String, String>();
         replicationOptions.put("class", row.getString(STRATEGY_CLASS));
-        replicationOptions.putAll(TableMetadata.fromJsonMap(row.getString(STRATEGY_OPTIONS)));
+        replicationOptions.putAll(SimpleJSONParser.parseStringMap(row.getString(STRATEGY_OPTIONS)));
 
         return new KeyspaceMetadata(name, durableWrites, replicationOptions);
     }
@@ -94,7 +94,7 @@ public class KeyspaceMetadata {
      * exists, {@code false} otherwise.
      */
     public TableMetadata getTable(String name) {
-        return tables.get(name);
+        return tables.get(Metadata.handleId(name));
     }
 
     /**
@@ -123,10 +123,10 @@ public class KeyspaceMetadata {
     public String exportAsString() {
         StringBuilder sb = new StringBuilder();
 
-        sb.append(asCQLQuery()).append("\n");
+        sb.append(asCQLQuery()).append('\n');
 
         for (TableMetadata tm : tables.values())
-            sb.append("\n").append(tm.exportAsString()).append("\n");
+            sb.append('\n').append(tm.exportAsString()).append('\n');
 
         return sb.toString();
     }
@@ -143,15 +143,15 @@ public class KeyspaceMetadata {
     public String asCQLQuery() {
         StringBuilder sb = new StringBuilder();
 
-        sb.append("CREATE KEYSPACE ").append(name).append(" WITH ");
-        sb.append("REPLICATION = { 'class' : '").append(replication.get("class")).append("'");
+        sb.append("CREATE KEYSPACE ").append(Metadata.escapeId(name)).append(" WITH ");
+        sb.append("REPLICATION = { 'class' : '").append(replication.get("class")).append('\'');
         for (Map.Entry<String, String> entry : replication.entrySet()) {
             if (entry.getKey().equals("class"))
                 continue;
-            sb.append(", '").append(entry.getKey()).append("': '").append(entry.getValue()).append("'");
+            sb.append(", '").append(entry.getKey()).append("': '").append(entry.getValue()).append('\'');
         }
         sb.append(" } AND DURABLE_WRITES = ").append(durableWrites);
-        sb.append(";");
+        sb.append(';');
         return sb.toString();
     }
 

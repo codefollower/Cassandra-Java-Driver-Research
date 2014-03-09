@@ -32,16 +32,16 @@ import com.datastax.driver.core.Statement;
  * A data-center aware Round-robin load balancing policy.
  * <p>
  * This policy provides round-robin queries over the node of the local
- * datacenter. It also includes in the query plans returned a configurable
- * number of hosts in the remote datacenters, but those are always tried
+ * data center. It also includes in the query plans returned a configurable
+ * number of hosts in the remote data centers, but those are always tried
  * after the local nodes. In other words, this policy guarantees that no
- * host in a remote datacenter will be queried unless no host in the local
- * datacenter can be reached.
+ * host in a remote data center will be queried unless no host in the local
+ * data center can be reached.
  * <p>
- * If used with a single datacenter, this policy is equivalent to the
+ * If used with a single data center, this policy is equivalent to the
  * {@code LoadBalancingPolicy.RoundRobin} policy, but its DC awareness
  * incurs a slight overhead so the {@code LoadBalancingPolicy.RoundRobin}
- * policy could be prefered to this policy in that case.
+ * policy could be preferred to this policy in that case.
  */
 public class DCAwareRoundRobinPolicy implements LoadBalancingPolicy {
 
@@ -178,41 +178,46 @@ public class DCAwareRoundRobinPolicy implements LoadBalancingPolicy {
 
             @Override
             protected Host computeNext() {
-                if (remainingLocal > 0) {
-                    remainingLocal--;
-                    int c = idx++ % hosts.size();
-                    if (c < 0)
-                        c += hosts.size();
-                    return hosts.get(c);
+                while (true) {
+                    if (remainingLocal > 0) {
+                        remainingLocal--;
+                        int c = idx++ % hosts.size();
+                        if (c < 0) {
+                            c += hosts.size();
+                        }
+                        return hosts.get(c);
+                    }
+
+                    if (currentDcHosts != null && currentDcRemaining > 0) {
+                        currentDcRemaining--;
+                        int c = idx++ % currentDcHosts.size();
+                        if (c < 0) {
+                            c += currentDcHosts.size();
+                        }
+                        return currentDcHosts.get(c);
+                    }
+
+                    if (remoteDcs == null) {
+                        Set<String> copy = new HashSet<String>(perDcLiveHosts.keySet());
+                        copy.remove(localDc);
+                        remoteDcs = copy.iterator();
+                    }
+
+                    if (!remoteDcs.hasNext()) {
+                        return endOfData();
+                    }
+
+                    String nextRemoteDc = remoteDcs.next();
+                    CopyOnWriteArrayList<Host> nextDcHosts = perDcLiveHosts.get(nextRemoteDc);
+                    if (nextDcHosts != null) {
+                        // Clone for thread safety
+                        List<Host> dcHosts = cloneList(nextDcHosts);
+                        currentDcHosts = dcHosts.subList(0, Math.min(dcHosts.size(), usedHostsPerRemoteDc));
+                        currentDcRemaining = currentDcHosts.size();
+                    }
+
+
                 }
-
-                if (currentDcHosts != null && currentDcRemaining > 0) {
-                    currentDcRemaining--;
-                    int c = idx++ % currentDcHosts.size();
-                    if (c < 0)
-                        c += currentDcHosts.size();
-                    return currentDcHosts.get(c);
-                }
-
-                if (remoteDcs == null) {
-                    Set<String> copy = new HashSet<String>(perDcLiveHosts.keySet());
-                    copy.remove(localDc);
-                    remoteDcs = copy.iterator();
-                }
-
-                if (!remoteDcs.hasNext())
-                    return endOfData();
-
-                String nextRemoteDc = remoteDcs.next();
-                CopyOnWriteArrayList<Host> nextDcHosts = perDcLiveHosts.get(nextRemoteDc);
-                if (nextDcHosts != null) {
-                    // Clone for thread safety
-                    List<Host> dcHosts = cloneList(nextDcHosts);
-                    currentDcHosts = dcHosts.subList(0, Math.min(dcHosts.size(), usedHostsPerRemoteDc));
-                    currentDcRemaining = currentDcHosts.size();
-                }
-
-                return computeNext();
             }
         };
     }

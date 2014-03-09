@@ -18,12 +18,22 @@ package com.datastax.driver.core;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
+
+import com.google.common.collect.ImmutableList;
 
 /**
  * A statement that group a number of {@link Statement} so they get executed as
  * a batch.
+ * <p>
+ * Note: BatchStatement is not supported with the native protocol version 1: you
+ * will get an {@link UnsupportedProtocolVersionException} when submitting one if
+ * version 1 of the protocol is in use (i.e. if you've force version 1 through
+ * {@link Cluster.Builder#withProtocolVersion} or you use Cassandra 1.2). Note
+ * however that you can still use <a href="http://cassandra.apache.org/doc/cql3/CQL.html#batchStmt">CQL Batch statements</a>
+ * even with the protocol version 1.
  */
 //跟JDBC的java.sql.Statement.addBatch(String)类似 (批量sql)，
 //而不是java.sql.PreparedStatement.addBatch() (单条sql批量值)
@@ -47,7 +57,7 @@ public class BatchStatement extends Statement {
 
         /**
          * A counter batch. Note that such batch is the only type that can contain counter
-         * operation and it can only contain these.
+         * operations and it can only contain these.
          */
         COUNTER
     };
@@ -142,6 +152,26 @@ public class BatchStatement extends Statement {
     public BatchStatement addAll(Iterable<? extends Statement> statements) {
         for (Statement statement : statements)
             add(statement);
+        return this;
+    }
+
+    /**
+     * The statements that have been added to this batch so far.
+     *
+     * @return an (immutable) collection of the statements that have been added
+     * to this batch so far.
+     */
+    public Collection<Statement> getStatements() {
+        return ImmutableList.copyOf(statements);
+    }
+
+    /**
+     * Clears this batch, removing all statements added so far.
+     *
+     * @return this (now empty) {@code BatchStatement}.
+     */
+    public BatchStatement clear() {
+        statements.clear();
         return this;
     }
 

@@ -1,15 +1,57 @@
 CHANGELOG
 =========
 
+2.0.1:
+------
+
+- [improvement] Handle the static columns introduced in Cassandra 2.0.6 (JAVA-278)
+- [improvement] Add Cluster#newSession method to create Session without connecting
+  right away (JAVA-208)
+- [bug] Add missing iso8601 patterns for parsing dates (JAVA-279)
+- [bug] Properly parse BytesType as the blob type
+- [bug] Potential NPE when parsing schema of pre-CQL tables of C* 1.2 nodes (JAVA-280)
+
+Merged from 1.0 branch:
+
+- [bug] LatencyAwarePolicy.Builder#withScale doesn't set the scale (JAVA-275)
+- [new] Add methods to check if a Cluster/Session instance has been closed already (JAVA-114)
+
+
 2.0.0:
 ------
 
+- [api] Case sensitive identifier by default in Metadata (JAVA-269)
+- [bug] Fix potential NPE in Cluster#connect (JAVA-274)
+
+Merged from 1.0 branch:
+
+- [bug] Always return the PreparedStatement object that is cache internally (JAVA-263)
+- [bug] Fix race when multiple connect are done in parallel (JAVA-261)
+- [bug] Don't connect at all to nodes that are ignored by the load balancing
+  policy (JAVA-270)
+
+
+2.0.0-rc3:
+----------
+
+- [improvement] The protocol version 1 is now supported (features only supported by the
+  version 2 of the protocol throw UnsupportedFeatureException).
 - [improvement] Make most main objects interface to facilitate testing/mocking (JAVA-195)
+- [improvement] Adds new getStatements and clear methods to BatchStatement.
 - [api] Renamed shutdown to closeAsync and ShutdownFuture to CloseFuture. Clustering
   and Session also now implement Closeable (JAVA-247).
 - [bug] Fix potential thread leaks when shutting down Metrics (JAVA-232)
 - [bug] Fix potential NPE in HostConnectionPool (JAVA-231)
 - [bug] Avoid NPE when node is in an unconfigured DC (JAVA-244)
+- [bug] Don't block for scheduled reconnections on Cluster#close (JAVA-258)
+
+Merged from 1.0 branch:
+
+- [new] Added Session#prepareAsync calls (JAVA-224)
+- [new] Added Cluster#getLoggedKeyspace (JAVA-249)
+- [improvement] Avoid preparing a statement multiple time per host with multiple sessions
+- [bug] Make sure connections are returned to the right pools (JAVA-255)
+- [bug] Use date string in query build to work-around CASSANDRA-6718 (JAVA-264)
 
 
 2.0.0-rc2:

@@ -17,16 +17,25 @@ package com.datastax.driver.core;
 
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import com.codahale.metrics.*;
 import com.codahale.metrics.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.datastax.driver.core.exceptions.*;
+import com.datastax.driver.core.exceptions.DriverException;
+import com.datastax.driver.core.exceptions.DriverInternalError;
+import com.datastax.driver.core.exceptions.NoHostAvailableException;
+import com.datastax.driver.core.exceptions.ReadTimeoutException;
+import com.datastax.driver.core.exceptions.UnavailableException;
+import com.datastax.driver.core.exceptions.WriteTimeoutException;
 import com.datastax.driver.core.policies.RetryPolicy;
 
 /**
@@ -100,7 +109,7 @@ class RequestHandler implements Connection.ResponseCallback {
         if (currentPool == null || currentPool.isClosed())
             return false;
 
-        Connection connection = null;
+        PooledConnection connection = null;
         try {
             // Note: this is not perfectly correct to use getConnectTimeoutMillis(), but
             // until we provide a more fancy to control query timeouts, it's not a bad solution either
@@ -118,13 +127,13 @@ class RequestHandler implements Connection.ResponseCallback {
             if (metricsEnabled())
                 metrics().getErrorMetrics().getConnectionErrors().inc();
             if (connection != null)
-                currentPool.returnConnection(connection);
+                connection.release();
             logError(host.getAddress(), e);
             return false;
         } catch (BusyConnectionException e) {
-            // The pool shoudln't have give us a busy connection unless we've maxed up the pool, so move on to the next host.
+            // The pool shouldn't have give us a busy connection unless we've maxed up the pool, so move on to the next host.
             if (connection != null)
-                currentPool.returnConnection(connection);
+                connection.release();
             logError(host.getAddress(), e);
             return false;
         } catch (TimeoutException e) {
@@ -133,7 +142,7 @@ class RequestHandler implements Connection.ResponseCallback {
             return false;
         } catch (RuntimeException e) {
             if (connection != null)
-                currentPool.returnConnection(connection);
+                connection.release();
             logger.error("Unexpected error while querying " + host.getAddress(), e);
             logError(host.getAddress(), e);
             return false;
@@ -225,21 +234,10 @@ class RequestHandler implements Connection.ResponseCallback {
         callback.onException(connection, exception, System.nanoTime() - startTime);
     }
 
-    private void returnConnection(Connection connection) {
-        // In most case currentPool won't be null since we set it before sending the
-        // query. However, it's possible that for the same write we call both onSet
-        // and onException (especially if a node dies, we'll error out the handler and
-        // that may race with a result that just came in before the death). That fine
-        // though, but it means currentPool might be null (in which case the connection
-        // has been returned already to its pool anyway).
-        if (currentPool != null)
-            currentPool.returnConnection(connection);
-    }
-
     @Override
     public void onSet(Connection connection, Message.Response response, long latency) {
-
-        returnConnection(connection);
+        if (connection instanceof PooledConnection)
+            ((PooledConnection)connection).release();
 
         Host queriedHost = current;
         try {
@@ -303,7 +301,7 @@ class RequestHandler implements Connection.ResponseCallback {
                         case IS_BOOTSTRAPPING:
                             // Try another node
                             logger.error("Query sent to {} but it is bootstrapping. This shouldn't happen but trying next host.", connection.address);
-                            logError(connection.address, new DriverException("Host is boostrapping"));
+                            logError(connection.address, new DriverException("Host is bootstrapping"));
                             if (metricsEnabled())
                                 metrics().getErrorMetrics().getOthers().inc();
                             retry(false, null);
@@ -359,7 +357,7 @@ class RequestHandler implements Connection.ResponseCallback {
                             case RETRY:
                                 ++queryRetries;
                                 if (logger.isTraceEnabled())
-                                    logger.trace("Doing retry {} for query {} at consistency {}", new Object[]{ queryRetries, statement, retry.getRetryConsistencyLevel()});
+                                    logger.trace("Doing retry {} for query {} at consistency {}", queryRetries, statement, retry.getRetryConsistencyLevel());
                                 if (metricsEnabled())
                                     metrics().getErrorMetrics().getRetries().inc();
                                 retry(true, retry.getRetryConsistencyLevel());
@@ -436,8 +434,8 @@ class RequestHandler implements Connection.ResponseCallback {
 
     @Override
     public void onException(Connection connection, Exception exception, long latency) {
-
-        returnConnection(connection);
+        if (connection instanceof PooledConnection)
+            ((PooledConnection)connection).release();
 
         Host queriedHost = current;
         try {
@@ -458,7 +456,9 @@ class RequestHandler implements Connection.ResponseCallback {
 
     @Override
     public void onTimeout(Connection connection, long latency) {
-        returnConnection(connection);
+        if (connection instanceof PooledConnection)
+            ((PooledConnection)connection).release();
+
         Host queriedHost = current;
         logError(connection.address, new DriverException("Timeout during read"));
         retry(false, null);

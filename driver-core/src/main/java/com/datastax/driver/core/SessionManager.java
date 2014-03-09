@@ -21,12 +21,14 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
+import com.google.common.base.Function;
 import com.google.common.util.concurrent.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.datastax.driver.core.exceptions.AuthenticationException;
 import com.datastax.driver.core.exceptions.DriverInternalError;
+import com.datastax.driver.core.exceptions.UnsupportedFeatureException;
 import com.datastax.driver.core.policies.LoadBalancingPolicy;
 import com.datastax.driver.core.policies.ReconnectionPolicy;
 
@@ -42,15 +44,24 @@ class SessionManager implements Session {
     final HostConnectionPool.PoolState poolsState;
     final AtomicReference<CloseFuture> closeFuture = new AtomicReference<CloseFuture>();
 
-    // Package protected, only Cluster should construct that.
-    SessionManager(Cluster cluster, Collection<Host> hosts) {
-        this.cluster = cluster;
+    private volatile boolean isInit;
 
-        this.pools = new ConcurrentHashMap<Host, HostConnectionPool>(hosts.size());
+    // Package protected, only Cluster should construct that.
+    SessionManager(Cluster cluster) {
+        this.cluster = cluster;
+        this.pools = new ConcurrentHashMap<Host, HostConnectionPool>();
         this.poolsState = new HostConnectionPool.PoolState();
+    }
+
+    public synchronized Session init() {
+        if (isInit)
+            return this;
+
+        // If we haven't initialized the cluster, do it now
+        cluster.init();
 
         // Create pool to initial nodes (and wait for them to be created)
-        for (Host host : hosts) {
+        for (Host host : cluster.getMetadata().allHosts()) {
             try {
                 addOrRenewPool(host, false).get();
             } catch (ExecutionException e) {
@@ -60,6 +71,12 @@ class SessionManager implements Session {
                 Thread.currentThread().interrupt();
             }
         }
+        isInit = true;
+        return this;
+    }
+
+    public String getLoggedKeyspace() {
+        return poolsState.keyspace;
     }
 
     public ResultSet execute(String query) {
@@ -87,26 +104,46 @@ class SessionManager implements Session {
     }
 
     public PreparedStatement prepare(String query) {
+        try {
+            return Uninterruptibles.getUninterruptibly(prepareAsync(query));
+        } catch (ExecutionException e) {
+            throw DefaultResultSetFuture.extractCauseFromExecutionException(e);
+        }
+    }
+
+    public PreparedStatement prepare(RegularStatement statement) {
+        try {
+            return Uninterruptibles.getUninterruptibly(prepareAsync(statement));
+        } catch (ExecutionException e) {
+            throw DefaultResultSetFuture.extractCauseFromExecutionException(e);
+        }
+    }
+
+    public ListenableFuture<PreparedStatement> prepareAsync(String query) {
         Connection.Future future = new Connection.Future(new Requests.Prepare(query));
         execute(future, Statement.DEFAULT);
         return toPreparedStatement(query, future);
     }
 
-    public PreparedStatement prepare(RegularStatement statement) {
+    public ListenableFuture<PreparedStatement> prepareAsync(final RegularStatement statement) {
         if (statement.getValues() != null)
             throw new IllegalArgumentException("A statement to prepare should not have values");
 
-        PreparedStatement prepared = prepare(statement.toString());
+        ListenableFuture<PreparedStatement> prepared = prepareAsync(statement.toString());
+        return Futures.transform(prepared, new Function<PreparedStatement, PreparedStatement>() {
+            @Override
+            public PreparedStatement apply(PreparedStatement prepared) {
+                ByteBuffer routingKey = statement.getRoutingKey();
+                if (routingKey != null)
+                    prepared.setRoutingKey(routingKey);
+                prepared.setConsistencyLevel(statement.getConsistencyLevel());
+                if (statement.isTracing())
+                    prepared.enableTracing();
+                prepared.setRetryPolicy(statement.getRetryPolicy());
 
-        ByteBuffer routingKey = statement.getRoutingKey();
-        if (routingKey != null)
-            prepared.setRoutingKey(routingKey);
-        prepared.setConsistencyLevel(statement.getConsistencyLevel());
-        if (statement.isTracing())
-            prepared.enableTracing();
-        prepared.setRetryPolicy(statement.getRetryPolicy());
-
-        return prepared;
+                return prepared;
+            }
+        });
     }
 
     public CloseFuture closeAsync() {
@@ -125,6 +162,10 @@ class SessionManager implements Session {
             : closeFuture.get(); // We raced, it's ok, return the future that was actually set
     }
 
+    public boolean isClosed() {
+        return closeFuture.get() != null;
+    }
+
     public void close() {
         try {
             closeAsync().get();
@@ -139,36 +180,38 @@ class SessionManager implements Session {
         return cluster;
     }
 
-    private PreparedStatement toPreparedStatement(String query, Connection.Future future) {
-        try {
-            Message.Response response = Uninterruptibles.getUninterruptibly(future);
-            switch (response.type) {
-                case RESULT:
-                    Responses.Result rm = (Responses.Result)response;
-                    switch (rm.kind) {
-                        case PREPARED:
-                            Responses.Result.Prepared pmsg = (Responses.Result.Prepared)rm;
-                            DefaultPreparedStatement stmt = DefaultPreparedStatement.fromMessage(pmsg, cluster.getMetadata(), query, poolsState.keyspace);
-                            try {
-                                cluster.manager.prepare(stmt, future.getAddress());
-                            } catch (InterruptedException e) {
-                                Thread.currentThread().interrupt();
-                                // This method doesn't propagate interruption, at least not for now. However, if we've
-                                // interrupted preparing queries on other node it's not a problem as we'll re-prepare
-                                // later if need be. So just ignore.
-                            }
-                            return stmt;
-                        default:
-                            throw new DriverInternalError(String.format("%s response received when prepared statement was expected", rm.kind));
-                    }
-                case ERROR:
-                    throw ((Responses.Error)response).asException(future.getAddress());
-                default:
-                    throw new DriverInternalError(String.format("%s response received when prepared statement was expected", response.type));
+    private ListenableFuture<PreparedStatement> toPreparedStatement(final String query, final Connection.Future future) {
+        return Futures.transform(future, new Function<Message.Response, PreparedStatement>() {
+            public PreparedStatement apply(Message.Response response) {
+                switch (response.type) {
+                    case RESULT:
+                        Responses.Result rm = (Responses.Result)response;
+                        switch (rm.kind) {
+                            case PREPARED:
+                                Responses.Result.Prepared pmsg = (Responses.Result.Prepared)rm;
+                                PreparedStatement stmt = DefaultPreparedStatement.fromMessage(pmsg, cluster.getMetadata(), query, poolsState.keyspace);
+                                stmt = cluster.manager.addPrepared(stmt);
+                                try {
+                                    // All Sessions are connected to the same nodes so it's enough to prepare only the nodes of this session.
+                                    // If that changes, we'll have to make sure this propagate to other sessions too.
+                                    prepare(stmt.getQueryString(), future.getAddress());
+                                } catch (InterruptedException e) {
+                                    Thread.currentThread().interrupt();
+                                    // This method doesn't propagate interruption, at least not for now. However, if we've
+                                    // interrupted preparing queries on other node it's not a problem as we'll re-prepare
+                                    // later if need be. So just ignore.
+                                }
+                                return stmt;
+                            default:
+                                throw new DriverInternalError(String.format("%s response received when prepared statement was expected", rm.kind));
+                        }
+                    case ERROR:
+                        throw ((Responses.Error)response).asException(future.getAddress());
+                    default:
+                        throw new DriverInternalError(String.format("%s response received when prepared statement was expected", response.type));
+                }
             }
-        } catch (ExecutionException e) {
-            throw DefaultResultSetFuture.extractCauseFromExecutionException(e);
-        }
+        }, executor()); // Since the transformation involves querying other nodes, we should not do that in an I/O thread
     }
 
     Connection.Factory connectionFactory() {
@@ -195,10 +238,6 @@ class SessionManager implements Session {
         return cluster.manager.blockingTasksExecutor;
     }
 
-    boolean isClosed() {
-        return closeFuture.get() != null;
-    }
-
     ListenableFuture<Boolean> addOrRenewPool(final Host host, final boolean isHostAddition) {
         final HostDistance distance = cluster.manager.loadBalancingPolicy().distance(host);
         if (distance == HostDistance.IGNORED)
@@ -216,6 +255,10 @@ class SessionManager implements Session {
                 } catch (AuthenticationException e) {
                     logger.error("Error creating pool to {} ({})", host, e.getMessage());
                     cluster.manager.signalConnectionFailure(host, new ConnectionException(e.getHost(), e.getMessage()), isHostAddition);
+                    return false;
+                } catch (UnsupportedProtocolVersionException e) {
+                    logger.error("Error creating pool to {} ({})", host, e.getMessage());
+                    cluster.manager.signalConnectionFailure(host, new ConnectionException(e.address, e.getMessage()), isHostAddition);
                     return false;
                 } catch (ConnectionException e) {
                     logger.debug("Error creating pool to {} ({})", host, e.getMessage());
@@ -284,7 +327,7 @@ class SessionManager implements Session {
         long timeout = configuration().getSocketOptions().getConnectTimeoutMillis();
         try {
             Future<?> future = executeQuery(new Requests.Query("use " + keyspace), Statement.DEFAULT);
-            // Note: using the connection timeout is perfectly correct, we should probably change that someday
+            // Note: using the connection timeout isn't perfectly correct, we should probably change that someday
             Uninterruptibles.getUninterruptibly(future, timeout, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             throw new DriverInternalError(String.format("No responses after %d milliseconds while setting current keyspace. This should not happen, unless you have setup a very low connection timeout.", timeout));
@@ -307,27 +350,54 @@ class SessionManager implements Session {
     }
 
     Message.Request makeRequestMessage(Statement statement, ConsistencyLevel cl, ConsistencyLevel scl, ByteBuffer pagingState) {
+        int protoVersion = cluster.manager.protocolVersion();
         int fetchSize = statement.getFetchSize();
-        if (fetchSize <= 0)
+
+        if (protoVersion == 1) {
+            assert pagingState == null;
+            // We don't let the user change the fetchSize globally if the proto v1 is used, so we just need to
+            // check for the case of a per-statement override
+            if (fetchSize <= 0)
+                fetchSize = -1;
+            else if (fetchSize != Integer.MAX_VALUE)
+                throw new UnsupportedFeatureException("Paging is not supported");
+        } else if (fetchSize <= 0) {
             fetchSize = configuration().getQueryOptions().getFetchSize();
+        }
+
         if (fetchSize == Integer.MAX_VALUE)
             fetchSize = -1;
 
         if (statement instanceof RegularStatement) {
             RegularStatement rs = (RegularStatement)statement;
+
+            // It saddens me that we special case for the query builder here, but for now this is simpler.
+            // We could provide a general API in RegularStatement instead at some point but it's unclear what's
+            // the cleanest way to do that is right now (and it's probably not really that useful anyway).
+            if (protoVersion == 1 && rs instanceof com.datastax.driver.core.querybuilder.BuiltStatement)
+                ((com.datastax.driver.core.querybuilder.BuiltStatement)rs).setForceNoValues(true);
+
             ByteBuffer[] rawValues = rs.getValues();
+
+            if (protoVersion == 1 && rawValues != null)
+                throw new UnsupportedFeatureException("Binary values are not supported");
+
             List<ByteBuffer> values = rawValues == null ? Collections.<ByteBuffer>emptyList() : Arrays.asList(rawValues);
             String qString = rs.getQueryString();
             Requests.QueryProtocolOptions options = new Requests.QueryProtocolOptions(cl, values, false, fetchSize, pagingState, scl);
             return new Requests.Query(qString, options);
         } else if (statement instanceof BoundStatement) {
             BoundStatement bs = (BoundStatement)statement;
-            boolean skipMetadata = bs.statement.getPreparedId().resultSetMetadata != null;
+            boolean skipMetadata = protoVersion != 1 && bs.statement.getPreparedId().resultSetMetadata != null;
             Requests.QueryProtocolOptions options = new Requests.QueryProtocolOptions(cl, Arrays.asList(bs.values), skipMetadata, fetchSize, pagingState, scl);
             return new Requests.Execute(bs.statement.getPreparedId().id, options);
         } else {
             assert statement instanceof BatchStatement : statement;
             assert pagingState == null;
+
+            if (protoVersion == 1)
+                throw new UnsupportedFeatureException("Protocol level batching is not supported");
+
             BatchStatement bs = (BatchStatement)statement;
             BatchStatement.IdAndValues idAndVals = bs.getIdAndValues();
             return new Requests.Batch(bs.batchType, idAndVals.ids, idAndVals.values, cl);
@@ -341,17 +411,20 @@ class SessionManager implements Session {
      * {@link LoadBalancingPolicy} and handle host failover.
      */
     void execute(RequestHandler.Callback callback, Statement statement) {
+        // init() locks, so avoid if we know we don't need it.
+        if (!isInit)
+            init();
         new RequestHandler(this, callback, statement).sendRequest();
     }
 
-    void prepare(String query, InetAddress toExclude) throws InterruptedException {
+    private void prepare(String query, InetAddress toExclude) throws InterruptedException {
         for (Map.Entry<Host, HostConnectionPool> entry : pools.entrySet()) {
             if (entry.getKey().getAddress().equals(toExclude))
                 continue;
 
             // Let's not wait too long if we can't get a connection. Things
             // will fix themselves once the user tries a query anyway.
-            Connection c = null;
+            PooledConnection c = null;
             try {
                 c = entry.getValue().borrowConnection(200, TimeUnit.MILLISECONDS);
                 c.write(new Requests.Prepare(query)).get();
@@ -367,7 +440,7 @@ class SessionManager implements Session {
                 logger.error(String.format("Unexpected error while preparing query (%s) on %s", query, entry.getKey()), e);
             } finally {
                 if (c != null)
-                    entry.getValue().returnConnection(c);
+                    c.release();
             }
         }
     }

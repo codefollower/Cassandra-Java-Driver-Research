@@ -21,7 +21,7 @@
   
   <groupId>com.datastax.cassandra</groupId>
   <artifactId>cassandra-driver-parent</artifactId>
-  <version>2.0.0-rc3-SNAPSHOT</version>
+  <version>2.0.1-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>DataStax Java Driver for Apache Cassandra</name>
   <description>A driver for Apache Cassandra 1.2+ that works exclusively with the Cassandra Query Language version 3 (CQL3) and Cassandra's binary protocol.</description>
@@ -30,12 +30,16 @@
   <modules>
     <module>driver-core</module>
     <module>driver-examples</module>
+<<<<<<< HEAD
 	<module>my-test</module>
+=======
+    <module>driver-dse</module>
+>>>>>>> 12eb9b57710044594374113eeba38596229b8670
   </modules>
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <cassandra.version>2.0.4</cassandra.version>
+    <cassandra.version>2.0.5</cassandra.version>
   </properties>
 
   <dependencies>
@@ -49,7 +53,7 @@
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-log4j12</artifactId>
-      <version>1.7.5</version>
+      <version>1.7.6</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
