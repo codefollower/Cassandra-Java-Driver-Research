@@ -26,6 +26,8 @@ import com.datastax.driver.core.policies.RetryPolicy;
  * {@link BatchStatement} along with the querying options (consistency level,
  * whether to trace the query, ...).
  */
+//只有getRoutingKey和getKeyspace两个抽象方法
+//这个类只是一些get/set方法
 public abstract class Statement {
 
     // An exception to the RegularStatement, BoundStatement or BatchStatement rule above. This is

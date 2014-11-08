@@ -212,7 +212,7 @@ class Requests {
         public final ConsistencyLevel consistency;
         public final List<ByteBuffer> values;
         public final boolean skipMetadata;
-        public final int pageSize;
+        public final int pageSize; //就是fetchSize
         public final ByteBuffer pagingState;
         public final ConsistencyLevel serialConsistency;
         public final long defaultTimestamp;

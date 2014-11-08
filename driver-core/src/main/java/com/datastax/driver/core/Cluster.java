@@ -60,6 +60,7 @@ import com.datastax.driver.core.policies.*;
  * the nodes currently in the cluster as well as new nodes joining the cluster
  * subsequently.
  */
+//相当于java.sql.DriverManager
 public class Cluster implements Closeable {
 
     private static final Logger logger = LoggerFactory.getLogger(Cluster.class);

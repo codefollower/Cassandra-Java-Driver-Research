@@ -241,7 +241,7 @@ class Frame {
             Frame frame = (Frame)msg;
             ProtocolVersion protocolVersion = frame.header.version;
 
-            ChannelBuffer header = ChannelBuffers.buffer(Header.lengthFor(protocolVersion));
+            ChannelBuffer header = ChannelBuffers.buffer(Header.lengthFor(protocolVersion)); //8字节Frame头
             // We don't bother with the direction, we only send requests.
             header.writeByte(frame.header.version.toInt());
             header.writeByte(Header.Flag.serialize(frame.header.flags));

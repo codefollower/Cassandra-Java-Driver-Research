@@ -231,6 +231,7 @@ class ControlConnection implements Host.StateListener {
     }
 
     private Connection tryConnect(Host host, boolean isInitialConnection) throws ConnectionException, ExecutionException, InterruptedException, UnsupportedProtocolVersionException, ClusterNameMismatchException {
+        //1. 发送STARTUP {CQL_VERSION=3.0.0}
         Connection connection = cluster.connectionFactory.open(host);
 
         // If no protocol version was specified, set the default as soon as a connection succeeds (it's needed to parse UDTs in refreshSchema)
@@ -244,16 +245,30 @@ class ControlConnection implements Host.StateListener {
                 ProtocolEvent.Type.STATUS_CHANGE,
                 ProtocolEvent.Type.SCHEMA_CHANGE
             );
+            //2. 发送REGISTER [TOPOLOGY_CHANGE, STATUS_CHANGE, SCHEMA_CHANGE]
+            //这里没有像cluster.connectionFactory.open(host)中引发Connection.initializeTransport()那样处理Response
+            //实际上也是返回READY
             connection.write(new Requests.Register(evs));
+            //Response r = connection.write(new Requests.Register(evs)).get(); //我加上的
+            //System.out.println(r); //我加上的
 
             // We need to refresh the node list first so we know about the cassandra version of
             // the node we're connecting to.
+            //3. 发送:
+            //QUERY SELECT peer, data_center, rack, tokens, rpc_address FROM system.peers
+            //QUERY SELECT cluster_name, data_center, rack, tokens, partitioner FROM system.local WHERE key='local'
             refreshNodeListAndTokenMap(connection, cluster, isInitialConnection, true);
 
             // Note that refreshing the schema will trigger refreshNodeListAndTokenMap since table == null
             // We want that because the token map was not properly initialized by the first call above, since it requires the list of keyspaces
             // to be loaded.
             logger.debug("[Control connection] Refreshing schema");
+            //4. 发送:
+            //QUERY SELECT * FROM system.schema_keyspaces
+            //QUERY SELECT * FROM system.schema_columnfamilies
+            //QUERY SELECT * FROM system.schema_columns
+            //QUERY SELECT peer, data_center, rack, tokens, rpc_address FROM system.peers
+            //QUERY SELECT cluster_name, data_center, rack, tokens, partitioner FROM system.local WHERE key='local'
             refreshSchema(connection, null, null, cluster, isInitialConnection);
             return connection;
         } catch (BusyConnectionException e) {
@@ -309,6 +324,10 @@ class ControlConnection implements Host.StateListener {
                 whereClause += " AND columnfamily_name = '" + table + '\'';
         }
 
+        //4. 发送:
+        //QUERY SELECT * FROM system.schema_keyspaces
+        //QUERY SELECT * FROM system.schema_columnfamilies
+        //QUERY SELECT * FROM system.schema_columns
         DefaultResultSetFuture ksFuture = table == null
                                         ? new DefaultResultSetFuture(null, cluster.protocolVersion(), new Requests.Query(SELECT_KEYSPACES + whereClause))
                                         : null;
@@ -336,7 +355,7 @@ class ControlConnection implements Host.StateListener {
 
         // If the table is null, we either rebuild all from scratch or have an updated keyspace. In both case, rebuild the token map
         // since some replication on some keyspace may have changed
-        if (table == null)
+        if (table == null) //tryConnect方法中会导致refreshNodeListAndTokenMap方法被调用两次
             refreshNodeListAndTokenMap(connection, cluster, false, false);
     }
 
@@ -487,6 +506,9 @@ class ControlConnection implements Host.StateListener {
 
         // Make sure we're up to date on nodes and tokens
 
+        //对应下面两条SQL
+        //peersFuture = SELECT peer, data_center, rack, tokens, rpc_address FROM system.peers
+        //localFuture = SELECT cluster_name, data_center, rack, tokens, partitioner FROM system.local WHERE key='local'
         DefaultResultSetFuture localFuture = new DefaultResultSetFuture(null, cluster.protocolVersion(), new Requests.Query(SELECT_LOCAL));
         DefaultResultSetFuture peersFuture = new DefaultResultSetFuture(null, cluster.protocolVersion(), new Requests.Query(SELECT_PEERS));
         connection.write(localFuture);

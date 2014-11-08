@@ -24,6 +24,12 @@ public class PreparedId
     // execution but that we don't want to expose publicly (see JAVA-195)
     final MD5Digest id;
 
+    //对应com.datastax.driver.core.Responses.Result.Prepared类
+    //例如，对于这样的sql: SELECT title,album,artist FROM playlists WHERE id = ?
+    //metadata = [id (uuid)] (对应绑定参数)
+    //resultMetadata = [title (varchar)][album (varchar)][artist (varchar)] (对应查询结果)
+    
+    //对于insert这种sql，只有metadata对应绑定参数，而resultMetadata是[0 columns]
     final ColumnDefinitions metadata;
     final ColumnDefinitions resultSetMetadata;
 

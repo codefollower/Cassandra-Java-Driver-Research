@@ -21,6 +21,8 @@ import java.nio.ByteBuffer;
  * A simple {@code RegularStatement} implementation built directly from a query
  * string.
  */
+//要实现com.datastax.driver.core.Statement类的getRoutingKey和getKeyspace抽象方法
+//和com.datastax.driver.core.RegularStatement类的getQueryString和getValues抽象方法
 public class SimpleStatement extends RegularStatement {
 
     private final String query;
@@ -228,7 +230,7 @@ public class SimpleStatement extends RegularStatement {
     static ByteBuffer compose(ByteBuffer... buffers) {
         int totalLength = 0;
         for (ByteBuffer bb : buffers)
-            totalLength += 2 + bb.remaining() + 1;
+            totalLength += 2 + bb.remaining() + 1; //putShortLength占两个字节，结束符0占一个字节
 
         ByteBuffer out = ByteBuffer.allocate(totalLength);
         for (ByteBuffer buffer : buffers)

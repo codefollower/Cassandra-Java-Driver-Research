@@ -39,6 +39,7 @@ import com.datastax.driver.core.exceptions.*;
  * since it is always possible to use a single session with fully qualified table name
  * in queries.
  */
+//相当于java.sql.Connection
 public interface Session extends Closeable {
 
     /**

@@ -188,7 +188,7 @@ abstract class Message {
             if (request.isTracingRequested())
                 flags.add(Frame.Header.Flag.TRACING);
 
-            Coder<Request> coder = (Coder<Request>)request.type.coder;
+            Coder<Request> coder = (Coder<Request>)request.type.coder; //每个Request的子类都有自己的编码器
             ChannelBuffer body = ChannelBuffers.buffer(coder.encodedSize(request, protocolVersion));
             coder.encode(request, body, protocolVersion);
 
