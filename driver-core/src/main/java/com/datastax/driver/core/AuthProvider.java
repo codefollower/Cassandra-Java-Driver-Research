@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -15,7 +15,7 @@
  */
 package com.datastax.driver.core;
 
-import java.net.InetAddress;
+import java.net.InetSocketAddress;
 
 import com.datastax.driver.core.exceptions.AuthenticationException;
 
@@ -34,7 +34,7 @@ public interface AuthProvider {
      * This is only useful as a placeholder when no authentication is to be used.
      */
     public static final AuthProvider NONE = new AuthProvider() {
-        public Authenticator newAuthenticator(InetAddress host) {
+        public Authenticator newAuthenticator(InetSocketAddress host) {
             throw new AuthenticationException(host,
                 String.format("Host %s requires authentication, but no authenticator found in Cluster configuration", host));
         }
@@ -46,5 +46,5 @@ public interface AuthProvider {
      * @param host the Cassandra host to connect to.
      * @return The authentication implementation to use.
      */
-    public Authenticator newAuthenticator(InetAddress host) throws AuthenticationException;
+    public Authenticator newAuthenticator(InetSocketAddress host) throws AuthenticationException;
 }

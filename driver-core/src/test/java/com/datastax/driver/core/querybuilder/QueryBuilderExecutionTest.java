@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -17,16 +17,15 @@ package com.datastax.driver.core.querybuilder;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Date;
 import java.util.List;
 
 import org.testng.annotations.Test;
-import static org.testng.Assert.*;
 
-import com.datastax.driver.core.CCMBridge;
-import com.datastax.driver.core.RegularStatement;
-import com.datastax.driver.core.Row;
-import com.datastax.driver.core.TestUtils;
+import com.datastax.driver.core.*;
+
 import static com.datastax.driver.core.querybuilder.QueryBuilder.*;
+import static org.testng.Assert.*;
 
 public class QueryBuilderExecutionTest extends CCMBridge.PerClassSingleNodeCluster {
 
@@ -34,7 +33,8 @@ public class QueryBuilderExecutionTest extends CCMBridge.PerClassSingleNodeClust
 
     @Override
     protected Collection<String> getTableDefinitions() {
-        return Arrays.asList(String.format(TestUtils.CREATE_TABLE_SIMPLE_FORMAT, TABLE1));
+        return Arrays.asList(String.format(TestUtils.CREATE_TABLE_SIMPLE_FORMAT, TABLE1),
+                             "CREATE TABLE dateTest (t timestamp PRIMARY KEY)");
     }
 
     @Test(groups = "short")
@@ -60,6 +60,20 @@ public class QueryBuilderExecutionTest extends CCMBridge.PerClassSingleNodeClust
         assertTrue(r2.isNull("f"));
     }
 
+    @Test(groups = "short")
+    public void dateHandlingTest() throws Exception {
+
+        Date d = new Date();
+        session.execute(insertInto("dateTest").value("t", d));
+        String query = select().from("dateTest").where(eq(token("t"), fcall("token", d))).toString();
+        List<Row> rows = session.execute(query).all();
+
+        assertEquals(1, rows.size());
+
+        Row r1 = rows.get(0);
+        assertEquals(d, r1.getDate("t"));
+    }
+
     @Test(groups = "unit")
     public void prepareTest() throws Exception {
 
@@ -67,5 +81,24 @@ public class QueryBuilderExecutionTest extends CCMBridge.PerClassSingleNodeClust
         String query = "INSERT INTO foo(a,b,c,d) VALUES ('foo','bar',?,0);";
         RegularStatement stmt = insertInto("foo").value("a", "foo").value("b", "bar").value("c", bindMarker()).value("d", 0);
         assertEquals(query, stmt.getQueryString());
+    }
+
+    @Test(groups = "short")
+    public void batchNonBuiltStatementTest() throws Exception {
+
+        SimpleStatement simple = new SimpleStatement("INSERT INTO " + TABLE1 + " (k, t) VALUES (?, ?)", "batchTest1", "val1");
+        RegularStatement built = insertInto(TABLE1).value("k", "batchTest2").value("t", "val2");
+        session.execute(batch().add(simple).add(built));
+
+        List<Row> rows = session.execute(select().from(TABLE1).where(in("k", "batchTest1", "batchTest2"))).all();
+        assertEquals(2, rows.size());
+
+        Row r1 = rows.get(0);
+        assertEquals("batchTest1", r1.getString("k"));
+        assertEquals("val1", r1.getString("t"));
+
+        Row r2 = rows.get(1);
+        assertEquals("batchTest2", r2.getString("k"));
+        assertEquals("val2", r2.getString("t"));
     }
 }

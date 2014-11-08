@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -15,15 +15,20 @@
  */
 package com.datastax.driver.core;
 
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.util.Arrays;
+import java.util.List;
 import org.testng.annotations.Test;
-import static org.testng.Assert.*;
 
-import com.datastax.driver.core.exceptions.NoHostAvailableException;
-import com.datastax.driver.core.exceptions.UnavailableException;
+import com.datastax.driver.core.exceptions.*;
 import com.datastax.driver.core.policies.DCAwareRoundRobinPolicy;
 import com.datastax.driver.core.policies.RoundRobinPolicy;
 import com.datastax.driver.core.policies.TokenAwarePolicy;
+import com.datastax.driver.core.policies.WhiteListPolicy;
+
 import static com.datastax.driver.core.TestUtils.*;
+import static org.testng.Assert.*;
 
 public class LoadBalancingPolicyTest extends AbstractPoliciesTest {
 
@@ -44,7 +49,7 @@ public class LoadBalancingPolicyTest extends AbstractPoliciesTest {
             resetCoordinators();
             c.cassandraCluster.bootstrapNode(3);
             waitFor(CCMBridge.IP_PREFIX + '3', c.cluster);
-            Thread.sleep(30000);
+            Thread.sleep(50000);
 
             query(c, 12);
 
@@ -60,6 +65,43 @@ public class LoadBalancingPolicyTest extends AbstractPoliciesTest {
 
             assertQueried(CCMBridge.IP_PREFIX + '2', 6);
             assertQueried(CCMBridge.IP_PREFIX + '3', 6);
+
+        } catch (Throwable e) {
+            c.errorOut();
+            throw e;
+        } finally {
+            resetCoordinators();
+            c.discard();
+        }
+    }
+
+    @Test(groups = "long")
+    public void whiteListPolicyTest() throws Throwable {
+
+        List<InetSocketAddress> whiteList = Arrays.asList(new InetSocketAddress(InetAddress.getByName(CCMBridge.IP_PREFIX + '2'), 9042));
+
+        Cluster.Builder builder = Cluster.builder().withLoadBalancingPolicy(new WhiteListPolicy(new RoundRobinPolicy(), whiteList));
+        CCMBridge.CCMCluster c = CCMBridge.buildCluster(3, builder);
+        try {
+
+            createSchema(c.session);
+            init(c, 12);
+            query(c, 12);
+
+            assertQueried(CCMBridge.IP_PREFIX + "1", 0);
+            assertQueried(CCMBridge.IP_PREFIX + "2", 12);
+            assertQueried(CCMBridge.IP_PREFIX + "3", 0);
+
+            resetCoordinators();
+            c.cassandraCluster.decommissionNode(2);
+            waitForDecommission(CCMBridge.IP_PREFIX + "2", c.cluster);
+
+            try {
+                query(c, 12);
+                fail("Should work, we've only whitelisted node 2 and it's been removed");
+            } catch (NoHostAvailableException e) {
+                // That's what we expected
+            }
 
         } catch (Throwable e) {
             c.errorOut();
@@ -91,7 +133,7 @@ public class LoadBalancingPolicyTest extends AbstractPoliciesTest {
             c.cassandraCluster.decommissionNode(1);
             waitFor(CCMBridge.IP_PREFIX + '5', c.cluster);
             waitForDecommission(CCMBridge.IP_PREFIX + '1', c.cluster);
-            Thread.sleep(30000);
+            Thread.sleep(50000);
 
             query(c, 12);
 
@@ -125,6 +167,31 @@ public class LoadBalancingPolicyTest extends AbstractPoliciesTest {
             assertQueried(CCMBridge.IP_PREFIX + '2', 0);
             assertQueried(CCMBridge.IP_PREFIX + '3', 6);
             assertQueried(CCMBridge.IP_PREFIX + '4', 6);
+
+        } catch (Throwable e) {
+            c.errorOut();
+            throw e;
+        } finally {
+            resetCoordinators();
+            c.discard();
+        }
+    }
+
+    @Test(groups = "long")
+    public void DCAwareRoundRobinTest2() throws Throwable {
+
+        Cluster.Builder builder = Cluster.builder().withLoadBalancingPolicy(new DCAwareRoundRobinPolicy("dc1"));
+        CCMBridge.CCMCluster c = CCMBridge.buildCluster(2, 2, builder);
+        try {
+
+            createMultiDCSchema(c.session);
+            init(c, 12);
+            query(c, 12);
+
+            assertQueried(CCMBridge.IP_PREFIX + '1', 6);
+            assertQueried(CCMBridge.IP_PREFIX + '2', 6);
+            assertQueried(CCMBridge.IP_PREFIX + '3', 0);
+            assertQueried(CCMBridge.IP_PREFIX + '4', 0);
 
         } catch (Throwable e) {
             c.errorOut();
@@ -181,12 +248,11 @@ public class LoadBalancingPolicyTest extends AbstractPoliciesTest {
             //
             //resetCoordinators();
             c.cassandraCluster.decommissionNode(5);
-            waitForDecommission(CCMBridge.IP_PREFIX + '5', c.cluster);
+            waitForDecommission(CCMBridge.IP_PREFIX + '5', c.cluster, 120);
 
             query(c, 12);
 
-            assertQueried(CCMBridge.IP_PREFIX + '1', 12);
-            assertQueried(CCMBridge.IP_PREFIX + '2', 0);
+            assertOneNodeQueried(12, CCMBridge.IP_PREFIX + '1', CCMBridge.IP_PREFIX + '2', CCMBridge.IP_PREFIX + '3');
             assertQueried(CCMBridge.IP_PREFIX + '3', 0);
             assertQueried(CCMBridge.IP_PREFIX + '4', 0);
             assertQueried(CCMBridge.IP_PREFIX + '5', 0);
@@ -270,7 +336,7 @@ public class LoadBalancingPolicyTest extends AbstractPoliciesTest {
 
     public void tokenAwareTest(boolean usePrepared) throws Throwable {
         Cluster.Builder builder = Cluster.builder().withLoadBalancingPolicy(new TokenAwarePolicy(new RoundRobinPolicy()));
-        CCMBridge.CCMCluster c = CCMBridge.buildCluster(2, builder);
+        CCMBridge.CCMCluster c = CCMBridge.buildCluster(3, builder);
         try {
 
             createSchema(c.session);
@@ -282,23 +348,28 @@ public class LoadBalancingPolicyTest extends AbstractPoliciesTest {
             // we just hit only one node.
             assertQueried(CCMBridge.IP_PREFIX + '1', 0);
             assertQueried(CCMBridge.IP_PREFIX + '2', 12);
+            assertQueried(CCMBridge.IP_PREFIX + '3', 0);
 
             resetCoordinators();
             query(c, 12);
 
             assertQueried(CCMBridge.IP_PREFIX + '1', 0);
             assertQueried(CCMBridge.IP_PREFIX + '2', 12);
+            assertQueried(CCMBridge.IP_PREFIX + '3', 0);
 
             resetCoordinators();
-            c.cassandraCluster.forceStop(2);
-            waitForDown(CCMBridge.IP_PREFIX + '2', c.cluster);
+            c.cassandraCluster.stop(2);
+            waitForDownWithWait(CCMBridge.IP_PREFIX + '2', c.cluster, 10);
 
             try {
                 query(c, 12, usePrepared);
                 fail();
+            } catch (ReadTimeoutException e) {
+                assertEquals(1, e.getRequiredAcknowledgements());
+                assertEquals(0, e.getReceivedAcknowledgements());
             } catch (UnavailableException e) {
-                assertEquals("Not enough replica available for query at consistency ONE (1 required but only 0 alive)",
-                             e.getMessage());
+                assertEquals(1, e.getRequiredReplicas());
+                assertEquals(0, e.getAliveReplicas());
             }
 
             resetCoordinators();
@@ -312,6 +383,7 @@ public class LoadBalancingPolicyTest extends AbstractPoliciesTest {
 
             assertQueried(CCMBridge.IP_PREFIX + '1', 0);
             assertQueried(CCMBridge.IP_PREFIX + '2', 12);
+            assertQueried(CCMBridge.IP_PREFIX + '3', 0);
 
             resetCoordinators();
             c.cassandraCluster.decommissionNode(2);
@@ -319,8 +391,9 @@ public class LoadBalancingPolicyTest extends AbstractPoliciesTest {
 
             query(c, 12);
 
-            assertQueried(CCMBridge.IP_PREFIX + '1', 12);
+            assertQueried(CCMBridge.IP_PREFIX + '1', 0);
             assertQueried(CCMBridge.IP_PREFIX + '2', 0);
+            assertQueried(CCMBridge.IP_PREFIX + '3', 12);
 
         } catch (Throwable e) {
             c.errorOut();

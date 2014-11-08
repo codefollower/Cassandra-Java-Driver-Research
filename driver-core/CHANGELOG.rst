@@ -1,6 +1,131 @@
 CHANGELOG
 =========
 
+2.0.8:
+------
+
+- [bug] Fix token awareness for case-sensitive keyspaces and tables (JAVA-526)
+- [bug] Check maximum number of values passed to SimpleStatement (JAVA-515)
+- [improvement] Expose the driver version through the API (JAVA-532)
+- [improvement] Optimize session initialization when some hosts are not
+  responsive (JAVA-522)
+
+
+2.0.7:
+------
+
+- [bug] Handle null pool in PooledConnection.release (JAVA-449)
+- [improvement] Defunct connection on request timeout (JAVA-425)
+- [improvement] Try next host when we get a SERVER_ERROR (JAVA-426)
+- [bug] Handle race between query timeout and completion (JAVA-449, JAVA-460, JAVA-471)
+- [bug] Fix DCAwareRoundRobinPolicy datacenter auto-discovery (JAVA-496)
+- [bug] Ensure control connection does not trigger concurrent reconnects (JAVA-497)
+- [improvement] Keep trying to reconnect on authentication errors (JAVA-472)
+- [improvement] Expose close method on load balancing policy (JAVA-463)
+- [improvement] Allow load balancing policy to trigger refresh for a single host (JAVA-459)
+- [bug] Expose an API to cancel reconnection attempts (JAVA-493)
+- [bug] Fix NPE when a connection fails during pool construction (JAVA-503)
+- [improvement] Log datacenter name in DCAware policy's init when it is explicitly provided
+  (JAVA-423)
+- [improvement] Shuffle the replicas in TokenAwarePolicy.newQueryPlan (JAVA-504)
+- [improvement] Make schema agreement wait tuneable (JAVA-507)
+- [improvement] Document how to inject the driver metrics into another registry (JAVA-494)
+- [improvement] Add idle timeout to the connection pool (JAVA-419)
+- [bug] LatencyAwarePolicy does not shutdown executor on invocation of close (JAVA-516)
+- [improvement] Throw an exception when DCAwareRoundRobinPolicy is built with
+  an explicit but null or empty local datacenter (JAVA-451).
+- [bug] Fix check for local contact points in DCAware policy's init (JAVA-511)
+- [improvement] Make timeout on saturated pool customizable (JAVA-457)
+- [improvement] Downgrade Guava to 14.0.1 (JAVA-521)
+
+
+2.0.6:
+------
+
+- [bug] Check cluster name when connecting to a new node (JAVA-397)
+- [bug] Add missing CAS delete support in QueryBuilder (JAVA-326)
+- [bug] Add collection and data length checks during serialization (JAVA-363)
+- [improvement] Surface number of retries in metrics (JAVA-329)
+- [bug] Do not use a host when no rpc_address found for it (JAVA-428)
+- [improvement] Add ResultSet.wasApplied() for conditional queries (JAVA-358)
+- [bug] Fix negative HostConnectionPool open count (JAVA-349)
+- [improvement] Log more connection details at trace and debug levels (JAVA-436)
+- [bug] Fix cluster shutdown (JAVA-445)
+- [improvement] Expose child policy in chainable load balancing policies (JAVA-439)
+
+
+2.0.5:
+------
+
+- [bug] Release connections on ResultSetFuture#cancel (JAVA-407)
+- [bug] Fix handling of SimpleStatement with values in query builder
+  batches (JAVA-393)
+- [bug] Ensure pool is properly closed in onDown (JAVA-417)
+- [bug] Fix tokenMap initialization at startup (JAVA-415)
+- [bug] Avoid deadlock on close (JAVA-418)
+
+
+2.0.4:
+------
+
+- [improvement] Better handling of dead connections (JAVA-204)
+- [bug] Fix potential NPE in ControlConnection (JAVA-373)
+- [bug] Throws NPE when passed null for a contact point (JAVA-291)
+- [bug] Avoid LoadBalancingPolicy onDown+onUp at startup (JAVA-315)
+- [bug] Avoid classloader leak in Tomcat (JAVA-343)
+- [bug] Avoid deadlock in onAdd/onUp (JAVA-387)
+- [bug] Make metadata parsing more lenient (JAVA-377, JAVA-391)
+- [bug] Ensure defunct connections are completely closed (JAVA-394)
+- [bug] Fix memory and resource leak on closed Sessions (JAVA-342, JAVA-390)
+
+
+2.0.3:
+------
+
+- [new] The new AbsractSession makes mocking of Session easier.
+- [new] Allow to trigger a refresh of connected hosts (JAVA-309)
+- [new] New Session#getState method allows to grab information on
+  which nodes a session is connected to (JAVA-265)
+- [new] Add QueryBuilder syntax for tuples in where clauses (syntax
+  introduced in Cassandra 2.0.6) (JAVA-327)
+- [improvement] Properly validate arguments of PoolingOptions methods
+  (JAVA-359)
+- [bug] Fix bogus rejection of BigInteger in 'execute with values'
+  (JAVA-368)
+- [bug] Signal connection failure sooner to avoid missing them
+  (JAVA-367)
+- [bug] Throw UnsupportedOperationException for protocol batch
+  setSerialCL (JAVA-337)
+
+Merged from 1.0 branch:
+
+- [bug] Fix periodic reconnection to down hosts (JAVA-325)
+
+
+2.0.2:
+------
+
+- [api] The type of the map key returned by NoHostAvailable#getErrors has changed from
+  InetAddress to InetSocketAddress. Same for Initializer#getContactPoints return and
+  for AuthProvider#newAuthenticator.
+- [api] The default load balacing policy is now DCAwareRoundRobinPolicy, and the local
+  datacenter is automatically picked based on the first connected node. Furthermore,
+  the TokenAwarePolicy is also used by default (JAVA-296)
+- [new] New optional AddressTranslater (JAVA-145)
+- [bug] Don't remove quotes on keyspace in the query builder (JAVA-321)
+- [bug] Fix potential NPE while cluster undergo schema changes (JAVA-320)
+- [bug] Fix thread-safety of page fetching (JAVA-319)
+- [bug] Fix potential NPE using fetchMoreResults (JAVA-318)
+
+Merged from 1.0 branch:
+
+- [new] Expose the name of the partitioner in use in the cluster metadata (JAVA-179)
+- [new] Add new WhiteListPolicy to limit the nodes connected to a particular list
+- [improvement] Do not hop DC for LOCAL_* CL in DCAwareRoundRobinPolicy (JAVA-289)
+- [bug] Revert back to longs for dates in the query builder (JAVA-313)
+- [bug] Don't reconnect to nodes ignored by the load balancing policy (JAVA-314)
+
+
 2.0.1:
 ------
 

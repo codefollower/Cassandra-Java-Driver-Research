@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package com.datastax.driver.core;
 
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -36,9 +37,10 @@ public class Metadata {
 
     private final Cluster.Manager cluster;
     volatile String clusterName;
-    private final ConcurrentMap<InetAddress, Host> hosts = new ConcurrentHashMap<InetAddress, Host>();
+    volatile String partitioner;
+    private final ConcurrentMap<InetSocketAddress, Host> hosts = new ConcurrentHashMap<InetSocketAddress, Host>();
     private final ConcurrentMap<String, KeyspaceMetadata> keyspaces = new ConcurrentHashMap<String, KeyspaceMetadata>();
-    private volatile TokenMap tokenMap;
+    volatile TokenMap tokenMap;
 
     private static final Pattern cqlId = Pattern.compile("\\w+");
     private static final Pattern lowercaseId = Pattern.compile("[a-z][a-z0-9_]*");
@@ -130,8 +132,25 @@ public class Metadata {
             String cfName = cfRow.getString(TableMetadata.CF_NAME);
             try {
                 Map<String, ColumnMetadata.Raw> cols = colsDefs == null ? null : colsDefs.get(cfName);
-                if (cols == null)
-                    cols = Collections.<String, ColumnMetadata.Raw>emptyMap();
+                if (cols == null || cols.isEmpty()) {
+                    if (cassandraVersion.getMajor() >= 2) {
+                        // In C* >= 2.0, we should never have no columns metadata because at the very least we should
+                        // have the metadata corresponding to the default CQL metadata. So if we don't have any columns,
+                        // that can only mean that the table got creating concurrently with our schema queries, and the
+                        // query for columns metadata reached the node before the table was persisted while the table
+                        // metadata one reached it afterwards. We could make the query to the column metadata sequential
+                        // with the table metadata instead of in parallel, but it's probably not worth making it slower
+                        // all the time to avoid this race since 1) it's very very uncommon and 2) we can just ignore the
+                        // incomplete table here for now and it'll get updated next time with no particular consequence
+                        // (if the table creation was concurrent with our querying, we'll get a notifciation later and
+                        // will reupdate the schema for it anyway). See JAVA-320 for why we need this.
+                        continue;
+                    } else {
+                        // C* 1.2 don't persists default CQL metadata, so it's possible not to have columns (for thirft
+                        // tables). But in that case TableMetadata.build() knows how to handle it.
+                        cols = Collections.<String, ColumnMetadata.Raw>emptyMap();
+                    }
+                }
                 TableMetadata.build(ksm, cfRow, cols, cassandraVersion);
             } catch (RuntimeException e) {
                 // See ControlConnection#refreshSchema for why we'd rather not probably this further
@@ -155,17 +174,17 @@ public class Metadata {
         this.tokenMap = TokenMap.build(factory, allTokens, keyspaces.values());
     }
 
-    Host add(InetAddress address) {
-        Host newHost = new Host(address, cluster.convictionPolicyFactory);
+    Host add(InetSocketAddress address) {
+        Host newHost = new Host(address, cluster.convictionPolicyFactory, cluster);
         Host previous = hosts.putIfAbsent(address, newHost);
         return previous == null ? newHost : null;
     }
 
     boolean remove(Host host) {
-        return hosts.remove(host.getAddress()) != null;
+        return hosts.remove(host.getSocketAddress()) != null;
     }
 
-    Host getHost(InetAddress address) {
+    Host getHost(InetSocketAddress address) {
         return hosts.get(address);
     }
 
@@ -213,7 +232,7 @@ public class Metadata {
      * @param id the keyspace or table identifier.
      * @return {@code id} enclosed in double-quotes, for use in methods like
      * {@link #getReplicas}, {@link #getKeyspace}, {@link KeyspaceMetadata#getTable}
-     * or even {@link Session#connect(String)}.
+     * or even {@link Cluster#connect(String)}.
      */
     public static String quote(String id) {
         return '"' + id + '"';
@@ -245,12 +264,21 @@ public class Metadata {
     }
 
     /**
-     * Returns the Cassandra name for the cluster connect to.
+     * The Cassandra name for the cluster connect to.
      *
      * @return the Cassandra name for the cluster connect to.
      */
     public String getClusterName() {
         return clusterName;
+    }
+
+    /**
+     * The partitioner in use as reported by the Cassandra nodes.
+     *
+     * @return the partitioner in use as reported by the Cassandra nodes.
+     */
+    public String getPartitioner() {
+        return partitioner;
     }
 
     /**
@@ -310,15 +338,18 @@ public class Metadata {
         private final Token.Factory factory;
         private final Map<String, Map<Token, Set<Host>>> tokenToHosts;
         private final List<Token> ring;
+        final Set<Host> hosts;
 
-        private TokenMap(Token.Factory factory, Map<String, Map<Token, Set<Host>>> tokenToHosts, List<Token> ring) {
+        private TokenMap(Token.Factory factory, Map<String, Map<Token, Set<Host>>> tokenToHosts, List<Token> ring, Set<Host> hosts) {
             this.factory = factory;
             this.tokenToHosts = tokenToHosts;
             this.ring = ring;
+            this.hosts = hosts;
         }
 
         public static TokenMap build(Token.Factory factory, Map<Host, Collection<String>> allTokens, Collection<KeyspaceMetadata> keyspaces) {
 
+            Set<Host> hosts = allTokens.keySet();
             Map<Token, Host> tokenToPrimary = new HashMap<Token, Host>();
             Set<Token> allSorted = new TreeSet<Token>();
 
@@ -347,7 +378,7 @@ public class Metadata {
                     tokenToHosts.put(keyspace.getName(), strategy.computeTokenToReplicaMap(tokenToPrimary, ring));
                 }
             }
-            return new TokenMap(factory, tokenToHosts, ring);
+            return new TokenMap(factory, tokenToHosts, ring, hosts);
         }
 
         private Set<Host> getReplicas(String keyspace, Token token) {

@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ import com.datastax.driver.core.*;
  *
  * @since 1.0.4
  */
-public class LatencyAwarePolicy implements LoadBalancingPolicy {
+public class LatencyAwarePolicy implements ChainableLoadBalancingPolicy, CloseableLoadBalancingPolicy {
 
     private static final Logger logger = LoggerFactory.getLogger(LatencyAwarePolicy.class);
 
@@ -85,6 +85,11 @@ public class LatencyAwarePolicy implements LoadBalancingPolicy {
         this.minMeasure = minMeasure;
 
         updaterService.scheduleAtFixedRate(new Updater(), updateRate, updateRate, TimeUnit.NANOSECONDS);
+    }
+
+    @Override
+    public LoadBalancingPolicy getChildPolicy() {
+        return childPolicy;
     }
 
     /**
@@ -259,6 +264,11 @@ public class LatencyAwarePolicy implements LoadBalancingPolicy {
     @Override
     public void onUp(Host host) {
         childPolicy.onUp(host);
+    }
+
+    @Override
+    public void onSuspected(Host host) {
+        childPolicy.onSuspected(host);
     }
 
     @Override
@@ -677,5 +687,12 @@ public class LatencyAwarePolicy implements LoadBalancingPolicy {
         public LatencyAwarePolicy build() {
             return new LatencyAwarePolicy(childPolicy, exclusionThreshold, scale, retryPeriod, updateRate, minMeasure);
         }
+    }
+
+    @Override
+    public void close() {
+        if (childPolicy instanceof CloseableLoadBalancingPolicy)
+            ((CloseableLoadBalancingPolicy)childPolicy).close();
+        updaterService.shutdown();
     }
 }

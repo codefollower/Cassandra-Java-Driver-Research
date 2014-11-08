@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -44,7 +44,7 @@ public class Update extends BuiltStatement {
 
     Update(TableMetadata table) {
         super(table);
-        this.table = table.getName();
+        this.table = escapeId(table.getName());
         this.assignments = new Assignments(this);
         this.where = new Where(this);
         this.usings = new Options(this);

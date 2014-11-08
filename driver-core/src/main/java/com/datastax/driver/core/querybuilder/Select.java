@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -48,7 +48,7 @@ public class Select extends BuiltStatement {
 
     Select(TableMetadata table, List<Object> columnNames, boolean isDistinct) {
         super(table);
-        this.table = table.getName();
+        this.table = escapeId(table.getName());
         this.isDistinct = isDistinct;
         this.columnNames = columnNames;
         this.where = new Where(this);
@@ -234,6 +234,20 @@ public class Select extends BuiltStatement {
         public Select limit(int limit) {
             return statement.limit(limit);
         }
+
+        /**
+         * Adds a bind marker for the LIMIT clause to the SELECT statement this
+         * Where clause if part of.
+         *
+         * @param limit the bind marker to use as limit.
+         * @return the select statement this Where clause if part of.
+         *
+         * @throws IllegalStateException if a LIMIT clause has already been
+         * provided.
+         */
+        public Select limit(BindMarker limit) {
+            return statement.limit(limit);
+        }
     }
 
     /**
@@ -353,6 +367,10 @@ public class Select extends BuiltStatement {
          * as a column name (in a select clause), you will need to use the
          * {@link QueryBuilder#column} method, and so 
          * {@code fcall("textToBlob", QueryBuilder.column(foo)}.
+         *
+         * @param name the name of the function.
+         * @param parameters the parameters for the function call.
+         * @return this in-build SELECT statement
          */
         public abstract SelectionOrAlias fcall(String name, Object... parameters);
     }

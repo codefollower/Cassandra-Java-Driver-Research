@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@ package com.datastax.driver.core;
 
 import java.nio.ByteBuffer;
 
+import com.datastax.driver.core.exceptions.InvalidTypeException;
 import com.datastax.driver.core.policies.RetryPolicy;
 
 /**
@@ -97,7 +98,7 @@ public interface PreparedStatement {
     /**
      * Sets the routing key for this prepared statement.
      * <p>
-     * While you can provide a fixed routing key for all executions of this prepared 
+     * While you can provide a fixed routing key for all executions of this prepared
      * statement with this method, it is not mandatory to provide
      * one through this method. This method should only be used
      * if the partition key of the prepared query is not part of the prepared
@@ -105,11 +106,16 @@ public interface PreparedStatement {
      * <p>
      * Note that if the partition key is part of the prepared variables, the
      * routing key will be automatically computed once those variables are bound.
+     * <p>
+     * If the partition key is neither fixed nor part of the prepared variables (e.g.
+     * a composite partition key where only some of the components are bound), the
+     * routing key can also be set on each bound statement.
      *
      * @param routingKey the raw (binary) value to use as routing key.
      * @return this {@code PreparedStatement} object.
      *
      * @see Statement#getRoutingKey
+     * @see BoundStatement#getRoutingKey
      */
     public PreparedStatement setRoutingKey(ByteBuffer routingKey);
 
@@ -137,7 +143,7 @@ public interface PreparedStatement {
     public ByteBuffer getRoutingKey();
 
     /**
-     * Sets a default consistency level for all bound statements 
+     * Sets a default consistency level for all bound statements
      * created from this prepared statement.
      * <p>
      * If no consistency level is set through this method, the bound statement
@@ -159,6 +165,33 @@ public interface PreparedStatement {
      * method.
      */
     public ConsistencyLevel getConsistencyLevel();
+
+    /**
+     * Sets a default serial consistency level for all bound statements
+     * created from this prepared statement.
+     * <p>
+     * If no serial consistency level is set through this method, the bound statement
+     * created from this object will use the default serial consistency level (SERIAL).
+     * <p>
+     * Changing the default serial consistency level is not retroactive, it only
+     * applies to BoundStatement created after the change.
+     *
+     * @param serialConsistency the default serial consistency level to set.
+     * @return this {@code PreparedStatement} object.
+     *
+     * @throws IllegalArgumentException if {@code serialConsistency} is not one of
+     * {@code ConsistencyLevel.SERIAL} or {@code ConsistencyLevel.LOCAL_SERIAL}.
+     */
+    public PreparedStatement setSerialConsistencyLevel(ConsistencyLevel serialConsistency);
+
+    /**
+     * Returns the default serial consistency level set through {@link #setSerialConsistencyLevel}.
+     *
+     * @return the default serial consistency level. Returns {@code null} if no
+     * consistency level has been set through this object {@code setSerialConsistencyLevel}
+     * method.
+     */
+    public ConsistencyLevel getSerialConsistencyLevel();
 
     /**
      * Returns the string of the query that was prepared to yield this {@code

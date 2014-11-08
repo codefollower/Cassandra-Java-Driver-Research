@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -25,19 +25,16 @@ import com.datastax.driver.core.TableMetadata;
  */
 public class Truncate extends BuiltStatement {
 
-    private final String keyspace;
     private final String table;
 
     Truncate(String keyspace, String table) {
         super(keyspace);
-        this.keyspace = keyspace;
         this.table = table;
     }
 
     Truncate(TableMetadata table) {
         super(table);
-        this.keyspace = table.getKeyspace().getName();
-        this.table = table.getName();
+        this.table = escapeId(table.getName());
     }
 
     @Override

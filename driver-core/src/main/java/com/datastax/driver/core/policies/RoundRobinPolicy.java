@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -20,11 +20,18 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.google.common.collect.AbstractIterator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.datastax.driver.core.Cluster;
+import com.datastax.driver.core.Configuration;
+import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.Host;
 import com.datastax.driver.core.HostDistance;
 import com.datastax.driver.core.Statement;
@@ -41,10 +48,17 @@ import com.datastax.driver.core.Statement;
  * datacenter this will be inefficient and you will want to use the
  * {@link DCAwareRoundRobinPolicy} load balancing policy instead.
  */
-public class RoundRobinPolicy implements LoadBalancingPolicy {
+public class RoundRobinPolicy implements LoadBalancingPolicy, CloseableLoadBalancingPolicy {
+
+    private static final Logger logger = LoggerFactory.getLogger(RoundRobinPolicy.class);
 
     private final CopyOnWriteArrayList<Host> liveHosts = new CopyOnWriteArrayList<Host>();
     private final AtomicInteger index = new AtomicInteger();
+
+    private final CopyOnWriteArrayList<Host> suspectedHosts = new CopyOnWriteArrayList<Host>();
+
+    private volatile Configuration configuration;
+    private volatile boolean hasLoggedLocalCLUse;
 
     /**
      * Creates a load balancing policy that picks host to query in a round robin
@@ -55,6 +69,7 @@ public class RoundRobinPolicy implements LoadBalancingPolicy {
     @Override
     public void init(Cluster cluster, Collection<Host> hosts) {
         this.liveHosts.addAll(hosts);
+        this.configuration = cluster.getConfiguration();
         this.index.set(new Random().nextInt(Math.max(hosts.size(), 1)));
     }
 
@@ -89,6 +104,18 @@ public class RoundRobinPolicy implements LoadBalancingPolicy {
     @Override
     public Iterator<Host> newQueryPlan(String loggedKeyspace, Statement statement) {
 
+        if (!hasLoggedLocalCLUse) {
+            ConsistencyLevel cl = statement.getConsistencyLevel() == null
+                                ? configuration.getQueryOptions().getConsistencyLevel()
+                                : statement.getConsistencyLevel();
+            if (cl.isDCLocal()) {
+                hasLoggedLocalCLUse = true;
+                logger.warn("Detected request at Consistency Level {} but the non-DC aware RoundRobinPolicy is in use. "
+                          + "It is strongly advised to use DCAwareRoundRobinPolicy if you have multiple DCs/use DC-aware consistency levels "
+                          + "(note: this message will only be logged once)", statement.getConsistencyLevel());
+            }
+        }
+
         // We clone liveHosts because we want a version of the list that
         // cannot change concurrently of the query plan iterator (this
         // would be racy). We use clone() as it don't involve a copy of the
@@ -105,11 +132,23 @@ public class RoundRobinPolicy implements LoadBalancingPolicy {
 
             private int idx = startIdx;
             private int remaining = hosts.size();
+            private Iterator<Host> suspected;
 
             @Override
             protected Host computeNext() {
-                if (remaining <= 0)
+                if (remaining <= 0) {
+
+                    if (suspected == null)
+                        suspected = suspectedHosts.iterator();
+
+                    while (suspected.hasNext()) {
+                        Host h = suspected.next();
+                        waitOnReconnection(h);
+                        if (h.isUp())
+                            return h;
+                    }
                     return endOfData();
+                }
 
                 remaining--;
                 int c = idx++ % hosts.size();
@@ -120,14 +159,34 @@ public class RoundRobinPolicy implements LoadBalancingPolicy {
         };
     }
 
+    private void waitOnReconnection(Host h) {
+        try {
+            h.getInitialReconnectionAttemptFuture().get(configuration.getSocketOptions().getConnectTimeoutMillis(), TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException e) {
+            throw new AssertionError(e);
+        } catch (TimeoutException e) {
+            // Shouldn't really happen but isn't really a huge deal
+            logger.debug("Timeout while waiting only host initial reconnection future", e);
+        }
+    }
+
     @Override
     public void onUp(Host host) {
         liveHosts.addIfAbsent(host);
+        suspectedHosts.remove(host);
+    }
+
+    @Override
+    public void onSuspected(Host host) {
+        suspectedHosts.addIfAbsent(host);
     }
 
     @Override
     public void onDown(Host host) {
         liveHosts.remove(host);
+        suspectedHosts.remove(host);
     }
 
     @Override
@@ -138,5 +197,10 @@ public class RoundRobinPolicy implements LoadBalancingPolicy {
     @Override
     public void onRemove(Host host) {
         onDown(host);
+    }
+
+    @Override
+    public void close() {
+        // nothing to do
     }
 }

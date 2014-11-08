@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -129,7 +129,7 @@ public final class Bytes {
      * blob string.
      */
     public static ByteBuffer fromHexString(String str) {
-        if (str.length() % 2 == 1)
+        if ((str.length() & 1) == 1)
             throw new IllegalArgumentException("A CQL blob string must have an even length (since one byte is always 2 hexadecimal character)");
 
         if (str.charAt(0) != '0' || str.charAt(1) != 'x')

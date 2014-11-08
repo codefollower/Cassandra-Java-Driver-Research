@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -18,6 +18,8 @@ package com.datastax.driver.core;
 import java.util.*;
 
 import org.testng.annotations.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
@@ -407,5 +409,27 @@ public class PreparedStatementTest extends CCMBridge.PerClassSingleNodeCluster {
             if (cluster.getConfiguration().getProtocolOptions().getProtocolVersion() != 1)
                 throw e;
         }
+    }
+
+    @Test(groups="short")
+    public void should_set_routing_key_on_case_insensitive_keyspace_and_table() {
+        session.execute("CREATE TABLE ks.foo (i int PRIMARY KEY)");
+
+        PreparedStatement ps = session.prepare("INSERT INTO ks.foo (i) VALUES (?)");
+        BoundStatement bs = ps.bind(1);
+        assertThat(bs.getRoutingKey()).isNotNull();
+    }
+
+    @Test(groups="short")
+    public void should_set_routing_key_on_case_sensitive_keyspace_and_table() {
+        session.execute("CREATE KEYSPACE \"Test\" WITH replication = { "
+            + "  'class': 'SimpleStrategy',"
+            + "  'replication_factor': '1'"
+            + "}");
+        session.execute("CREATE TABLE \"Test\".\"Foo\" (i int PRIMARY KEY)");
+
+        PreparedStatement ps = session.prepare("INSERT INTO \"Test\".\"Foo\" (i) VALUES (?)");
+        BoundStatement bs = ps.bind(1);
+        assertThat(bs.getRoutingKey()).isNotNull();
     }
 }

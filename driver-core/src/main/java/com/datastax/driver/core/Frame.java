@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -133,14 +133,8 @@ class Frame {
         @Override
         protected Object decode(ChannelHandlerContext ctx, Channel channel, ChannelBuffer buffer) throws Exception {
             try {
-                // We must at least validate that the frame version is something we support/know and it doesn't hurt to
-                // check the opcode is not garbage. And we should do that independently of what is the the bytes corresponding
-                // to the frame length are, i.e. we shouldn't wait for super.decode() to return non-null.
                 if (buffer.readableBytes() == 0)
                     return null;
-
-                int firstByte = buffer.getByte(0);
-                int version = firstByte & 0x7F;
 
                 // Validate the opcode (this will throw if it's not a response)
                 if (buffer.readableBytes() >= 4)

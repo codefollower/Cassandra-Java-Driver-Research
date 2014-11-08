@@ -2,9 +2,11 @@ package my.test;
 
 import com.datastax.driver.core.Cluster;
 import com.datastax.driver.core.ColumnDefinitions;
+import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.DataType;
 import com.datastax.driver.core.HostDistance;
 import com.datastax.driver.core.PoolingOptions;
+import com.datastax.driver.core.QueryOptions;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
@@ -18,7 +20,7 @@ public abstract class TestBase {
     protected String cql;
     protected Cluster cluster;
     protected Session session;
-    protected String address = "127.0.0.1";
+    protected String address = "127.0.0.2";
 
     private void initDefaults() throws Exception {
         Cluster.Builder builder = Cluster.builder().addContactPoint(address);
@@ -36,6 +38,11 @@ public abstract class TestBase {
         po.setCoreConnectionsPerHost(HostDistance.REMOTE, 1);
         builder.withPoolingOptions(po);
 
+        QueryOptions queryOptions = new QueryOptions();
+        //queryOptions.setConsistencyLevel(ConsistencyLevel.TWO);
+
+       // builder.withQueryOptions(queryOptions);
+
         builder.withCompression(Compression.SNAPPY);
         cluster = builder.build();
         cluster.init();
@@ -43,6 +50,9 @@ public abstract class TestBase {
         session = cluster.connect();
         session.execute("CREATE KEYSPACE IF NOT EXISTS " + KEYSPACE_NAME + " WITH replication "
                 + "= {'class':'SimpleStrategy', 'replication_factor':1};");
+        
+//        session.execute("CREATE KEYSPACE IF NOT EXISTS " + KEYSPACE_NAME + " WITH replication "
+//                + "= {'class':'NetworkTopologyStrategy', 'DC1':2, 'DC2':1};");
         session.execute("USE " + KEYSPACE_NAME);
     }
 

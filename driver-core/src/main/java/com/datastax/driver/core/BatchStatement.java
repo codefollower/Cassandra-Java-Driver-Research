@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -44,8 +44,8 @@ public class BatchStatement extends Statement {
      */
     public enum Type {
         /**
-         * A logged batch: Cassandra will first the batch to its distributed batch log to
-         * ensure the atomicity of the batch.
+         * A logged batch: Cassandra will first write the batch to its distributed batch log
+         * to ensure the atomicity of the batch.
          */
         LOGGED,
 
@@ -173,6 +173,35 @@ public class BatchStatement extends Statement {
     public BatchStatement clear() {
         statements.clear();
         return this;
+    }
+
+    /**
+     * Returns the number of elements in this batch.
+     *
+     * @return the number of elements in this batch.
+     */
+    public int size() {
+        return statements.size();
+    }
+
+    /**
+     * Throws an {@code UnsupportedOperationException} as setting the serial consistency is
+     * currently not supported for protocol batches by Cassandra.
+     * <p>
+     * The current version of the protocol uses does not allow to provide a serial consistency level
+     * for protocol batches (the batch created through this class). This is fixed by the protocol
+     * version 3 that will be part of Cassandra 2.1 and will be supported by the driver version 2.1.
+     * Until then, protocol batch with conditions will have their serial consistency level hardcoded
+     * to SERIAL. If you need to execute a batch with LOCAL_SERIAL, you will have to use a CQL batch.
+     *
+     * @param serialConsistency the serial consistency level
+     * @return nothing since this call currently always throws an {@code UnsupportedOperationException}.
+     *
+     * @throws UnsupportedOperationException see above.
+     */
+    @Override
+    public Statement setSerialConsistencyLevel(ConsistencyLevel serialConsistency) {
+        throw new UnsupportedOperationException();
     }
 
     @Override

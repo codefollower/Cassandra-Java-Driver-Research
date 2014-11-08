@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import com.datastax.driver.core.exceptions.InvalidTypeException;
  * A prepared statement with values bound to the bind variables.
  * <p>
  * Once values has been provided for the variables of the {@link PreparedStatement}
- * it has been created from, such BoundStatement can be executed (through 
+ * it has been created from, such BoundStatement can be executed (through
  * {@link Session#execute(Statement)}).
  * <p>
  * The values of a BoundStatement can be set by either index or name. When
@@ -42,6 +42,7 @@ public class BoundStatement extends Statement {
 
     final PreparedStatement statement;
     final ByteBuffer[] values;
+    private ByteBuffer routingKey;
 
     /**
      * Creates a new {@code BoundStatement} from the provided prepared
@@ -54,6 +55,8 @@ public class BoundStatement extends Statement {
 
         if (statement.getConsistencyLevel() != null)
             this.setConsistencyLevel(statement.getConsistencyLevel());
+        if (statement.getSerialConsistencyLevel() != null)
+            this.setSerialConsistencyLevel(statement.getSerialConsistencyLevel());
         if (statement.isTracing())
             this.enableTracing();
         if (statement.getRetryPolicy() != null)
@@ -87,7 +90,7 @@ public class BoundStatement extends Statement {
      * bound to a non-null value.
      *
      * @param name the name of the variable to check.
-     * @return whether the first occurrence of variable {@code name} has been 
+     * @return whether the first occurrence of variable {@code name} has been
      * bound to a non-null value.
      *
      * @throws IllegalArgumentException if {@code name} is not a prepared
@@ -194,27 +197,51 @@ public class BoundStatement extends Statement {
     }
 
     /**
+     * Sets the routing key for this bound statement.
+     * <p>
+     * This is useful when the routing key can neither be set on the {@code PreparedStatement} this bound statement
+     * was built from, nor automatically computed from bound variables. In particular, this is the case if the
+     * partition key is composite and only some of its components are bound.
+     *
+     * @param routingKey the raw (binary) value to use as routing key.
+     * @return this {@code BoundStatement} object.
+     *
+     * @see BoundStatement#getRoutingKey
+     */
+    public BoundStatement setRoutingKey(ByteBuffer routingKey) {
+        this.routingKey = routingKey;
+        return this;
+    }
+
+    /**
      * The routing key for this bound query.
      * <p>
      * This method will return a non-{@code null} value if either of the following occur:
      * <ul>
-     *   <li>All the columns composing the partition key are bound
-     *   variables of this {@code BoundStatement}. The routing key will then be
-     *   built using the values provided for these partition key columns.</li>
-     *   <li>The routing key has been set through {@link PreparedStatement#setRoutingKey}
-     *   for the {@code PreparedStatement} this statement has been built from.</li>
+     * <li>The routing key has been set directly through {@link BoundStatement#setRoutingKey}.</li>
+     * <li>The routing key has been set through {@link PreparedStatement#setRoutingKey} for the
+     * {@code PreparedStatement} this statement has been built from.</li>
+     * <li>All the columns composing the partition key are bound variables of this {@code BoundStatement}. The routing
+     * key will then be built using the values provided for these partition key columns.</li>
      * </ul>
      * Otherwise, {@code null} is returned.
      * <p>
-     * Note that if the routing key has been set through {@link PreparedStatement#setRoutingKey},
-     * that latter value takes precedence even if the partition key is part of the bound variables.
+     *
+     * Note that if the routing key has been set through {@link BoundStatement#setRoutingKey}, then that takes
+     * precedence. If the routing key has been set through {@link PreparedStatement#setRoutingKey} then that is used
+     * next. If neither of those are set then it is computed.
      *
      * @return the routing key for this statement or {@code null}.
      */
     @Override
     public ByteBuffer getRoutingKey() {
-        if (statement.getRoutingKey() != null)
+        if (this.routingKey != null) {
+            return this.routingKey;
+        }
+
+        if (statement.getRoutingKey() != null) {
             return statement.getRoutingKey();
+        }
 
         int[] rkIndexes = statement.getPreparedId().routingKeyIndexes;
         if (rkIndexes != null) {
@@ -796,6 +823,7 @@ public class BoundStatement extends Statement {
      * <p>
      * Please note that {@code null} values are not supported inside collection by CQL.
      *
+     * @param <T> the type of the elements of the list to set.
      * @param i the index of the variable to set.
      * @param v the value to set.
      * @return this BoundStatement.
@@ -834,6 +862,7 @@ public class BoundStatement extends Statement {
      * <p>
      * Please note that {@code null} values are not supported inside collection by CQL.
      *
+     * @param <T> the type of the elements of the list to set.
      * @param name the name of the variable to set; if multiple variables
      * {@code name} are prepared, all of them are set.
      * @param v the value to set.
@@ -859,6 +888,8 @@ public class BoundStatement extends Statement {
      * <p>
      * Please note that {@code null} values are not supported inside collection by CQL.
      *
+     * @param <K> the type of the keys for the map to set.
+     * @param <V> the type of the values for the map to set.
      * @param i the index of the variable to set.
      * @param v the value to set.
      * @return this BoundStatement.
@@ -899,6 +930,8 @@ public class BoundStatement extends Statement {
      * <p>
      * Please note that {@code null} values are not supported inside collection by CQL.
      *
+     * @param <K> the type of the keys for the map to set.
+     * @param <V> the type of the values for the map to set.
      * @param name the name of the variable to set; if multiple variables
      * {@code name} are prepared, all of them are set.
      * @param v the value to set.
@@ -924,6 +957,7 @@ public class BoundStatement extends Statement {
      * <p>
      * Please note that {@code null} values are not supported inside collection by CQL.
      *
+     * @param <T> the type of the elements of the set to set.
      * @param i the index of the variable to set.
      * @param v the value to set.
      * @return this BoundStatement.
@@ -961,6 +995,7 @@ public class BoundStatement extends Statement {
      * <p>
      * Please note that {@code null} values are not supported inside collection by CQL.
      *
+     * @param <T> the type of the elements of the set to set.
      * @param name the name of the variable to set; if multiple variables
      * {@code name} are prepared, all of them are set.
      * @param v the value to set.

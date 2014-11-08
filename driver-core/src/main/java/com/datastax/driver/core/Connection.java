@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 package com.datastax.driver.core;
 
 import javax.net.ssl.SSLEngine;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.Iterator;
 import java.util.concurrent.*;
@@ -53,7 +52,7 @@ class Connection {
     private static final Logger logger = LoggerFactory.getLogger(Connection.class);
     private static final byte[] EMPTY_BYTE_ARRAY = new byte[0];
 
-    public final InetAddress address;
+    public final InetSocketAddress address;
     private final String name;
 
     private final Channel channel;
@@ -67,10 +66,12 @@ class Connection {
     private final AtomicInteger writer = new AtomicInteger(0);
     private volatile String keyspace;
 
+    private volatile boolean isInitialized;
     private volatile boolean isDefunct;
-    private volatile ConnectionException exception;
 
     private final AtomicReference<ConnectionCloseFuture> closeFuture = new AtomicReference<ConnectionCloseFuture>();
+
+    private final Object terminationLock = new Object();
 
     /**
      * Create a new connection to a Cassandra node.
@@ -80,7 +81,7 @@ class Connection {
      * @throws ConnectionException if the connection attempts fails or is
      * refused by the server.
      */
-    protected Connection(String name, InetAddress address, Factory factory) throws ConnectionException, InterruptedException, UnsupportedProtocolVersionException {
+    protected Connection(String name, InetSocketAddress address, Factory factory) throws ConnectionException, InterruptedException, UnsupportedProtocolVersionException, ClusterNameMismatchException {
         this.address = address;
         this.factory = factory;
         this.name = name;
@@ -90,7 +91,7 @@ class Connection {
         int protocolVersion = factory.protocolVersion == 1 ? 1 : 2;
         bootstrap.setPipelineFactory(new PipelineFactory(this, protocolVersion, protocolOptions.getCompression().compressor, protocolOptions.getSSLOptions()));
 
-        ChannelFuture future = bootstrap.connect(new InetSocketAddress(address, factory.getPort()));
+        ChannelFuture future = bootstrap.connect(address);
 
         writer.incrementAndGet();
         try {
@@ -100,16 +101,17 @@ class Connection {
             if (!future.isSuccess())
             {
                 if (logger.isDebugEnabled())
-                    logger.debug(String.format("[%s] Error connecting to %s%s", name, address, extractMessage(future.getCause())));
-                throw new TransportException(address, "Cannot connect", future.getCause());
+                    logger.debug(String.format("%s Error connecting to %s%s", this, address, extractMessage(future.getCause())));
+                throw defunct(new TransportException(address, "Cannot connect", future.getCause()));
             }
         } finally {
             writer.decrementAndGet();
         }
 
-        logger.trace("[{}] Connection opened successfully", name);
-        initializeTransport(protocolVersion);
-        logger.trace("[{}] Transport initialized and ready", name);
+        logger.trace("{} Connection opened successfully", this);
+        initializeTransport(protocolVersion, factory.manager.metadata.clusterName);
+        logger.debug("{} Transport initialized and ready", this);
+        isInitialized = true;
     }
 
     private static String extractMessage(Throwable t) {
@@ -121,7 +123,7 @@ class Connection {
         return " (" + msg + ')';
     }
 
-    private void initializeTransport(int version) throws ConnectionException, InterruptedException, UnsupportedProtocolVersionException {
+    private void initializeTransport(int version, String clusterName) throws ConnectionException, InterruptedException, UnsupportedProtocolVersionException, ClusterNameMismatchException {
         try {
             ProtocolOptions.Compression compression = factory.configuration.getProtocolOptions().getCompression();
             Message.Response response = write(new Requests.Startup(compression)).get();
@@ -150,20 +152,20 @@ class Connection {
                 default:
                     throw defunct(new TransportException(address, String.format("Unexpected %s response message from server to a STARTUP message", response.type)));
             }
+
+            checkClusterName(clusterName);
         } catch (BusyConnectionException e) {
-            throw new DriverInternalError("Newly created connection should not be busy");
+            throw defunct(new DriverInternalError("Newly created connection should not be busy"));
         } catch (ExecutionException e) {
             throw defunct(new ConnectionException(address, String.format("Unexpected error during transport initialization (%s)", e.getCause()), e.getCause()));
         }
     }
 
     private UnsupportedProtocolVersionException unsupportedProtocolVersionException(int triedVersion) {
-        // Almost like defunct, but we don't want to wrap that exception inside a ConnectionException and
-        // we know it's happening while initializing the transport so we can simplify slightly
         logger.debug("Got unsupported protocol version error from {} for version {}", address, triedVersion);
-        isDefunct = true;
-        closeAsync();
-        return new UnsupportedProtocolVersionException(address, triedVersion);
+        UnsupportedProtocolVersionException exc = new UnsupportedProtocolVersionException(address, triedVersion);
+        defunct(new TransportException(address, "Cannot initialize transport", exc));
+        return exc;
     }
 
     private void authenticateV1(Authenticator authenticator) throws ConnectionException, BusyConnectionException, ExecutionException, InterruptedException {
@@ -173,7 +175,7 @@ class Connection {
             case READY:
                 break;
             case ERROR:
-                throw new AuthenticationException(address, ((Responses.Error)authResponse).message);
+                throw defunct(new AuthenticationException(address, ((Responses.Error)authResponse).message));
             default:
                 throw defunct(new TransportException(address, String.format("Unexpected %s response message from server to a CREDENTIALS message", authResponse.type)));
         }
@@ -188,11 +190,10 @@ class Connection {
         waitForAuthCompletion(authResponse, authenticator);
     }
 
-    private void waitForAuthCompletion(Message.Response authResponse, Authenticator authenticator)
-    throws ConnectionException, BusyConnectionException, ExecutionException, InterruptedException {
+    private void waitForAuthCompletion(Message.Response authResponse, Authenticator authenticator) throws ConnectionException, BusyConnectionException, ExecutionException, InterruptedException {
         switch (authResponse.type) {
             case AUTH_SUCCESS:
-                logger.trace("Authentication complete");
+                logger.trace("{} Authentication complete", this);
                 authenticator.onAuthenticationSuccess(((Responses.AuthSuccess)authResponse).token);
                 break;
             case AUTH_CHALLENGE:
@@ -200,11 +201,11 @@ class Connection {
                 if (responseToServer == null) {
                     // If we generate a null response, then authentication has completed, return without
                     // sending a further response back to the server.
-                    logger.trace("Authentication complete (No response to server)");
+                    logger.trace("{} Authentication complete (No response to server)", this);
                     return;
                 } else {
                     // Otherwise, send the challenge response back to the server
-                    logger.trace("Sending Auth response to challenge");
+                    logger.trace("{} Sending Auth response to challenge", this);
                     waitForAuthCompletion(write(new Requests.AuthResponse(responseToServer)).get(), authenticator);
                 }
                 break;
@@ -217,10 +218,26 @@ class Connection {
                 if (message.startsWith("java.lang.ArrayIndexOutOfBoundsException: 15"))
                     message = String.format("Cannot use authenticator %s with protocol version 1, "
                                   + "only plain text authentication is supported with this protocol version", authenticator);
-                throw new AuthenticationException(address, message);
+                throw defunct(new AuthenticationException(address, message));
             default:
-                throw new TransportException(address, String.format("Unexpected %s response message from server to authentication message", authResponse.type));
+                throw defunct(new TransportException(address, String.format("Unexpected %s response message from server to authentication message", authResponse.type)));
         }
+    }
+
+    // Due to C* gossip bugs, system.peers may report nodes that are gone from the cluster.
+    // If these nodes have been recommissionned to another cluster and are up, nothing prevents the driver from connecting
+    // to them. So we check that the cluster the node thinks it belongs to is our cluster (JAVA-397).
+    private void checkClusterName(String expected) throws ClusterNameMismatchException, ConnectionException, BusyConnectionException, ExecutionException, InterruptedException {
+        // At initialization, the cluster is not known yet
+        if (expected == null)
+            return;
+
+        DefaultResultSetFuture future = new DefaultResultSetFuture(null,new Requests.Query("select cluster_name from system.local"));
+        write(future);
+        Row row = future.get().one();
+        String actual = row.getString("cluster_name");
+        if (!expected.equals(actual))
+            throw new ClusterNameMismatchException(address, actual, expected);
     }
 
     public boolean isDefunct() {
@@ -231,18 +248,39 @@ class Connection {
         return dispatcher.streamIdHandler.maxAvailableStreams();
     }
 
-    public ConnectionException lastException() {
-        return exception;
-    }
-
-    ConnectionException defunct(ConnectionException e) {
+    <E extends Exception> E defunct(E e) {
         if (logger.isDebugEnabled())
             logger.debug("Defuncting connection to " + address, e);
-        exception = e;
         isDefunct = true;
-        dispatcher.errorOutAllHandler(e);
-        closeAsync();
+
+        ConnectionException ce = e instanceof ConnectionException
+                               ? (ConnectionException)e
+                               : new ConnectionException(address, "Connection problem", e);
+
+        // We need to signal the connection failure before erroring out handlers to make
+        // sure the "suspected" mechanism work as expected
+        Host host = factory.manager.metadata.getHost(address);
+        if (host != null) {
+            // If we get an error on a host that was already DOWN or SUSPECTED, this is a reconnection attempt.
+            // We don't want to signal, because that would invoke triggerOnDown unnecessarily (the host's bad
+            // condition is already taken care of by the reattempt in progress)
+            boolean isReconnectionAttempt = (host.state == Host.State.DOWN || host.state == Host.State.SUSPECT)
+                                            && !(this instanceof PooledConnection);
+            if (!isReconnectionAttempt) {
+                boolean isDown = factory.manager.signalConnectionFailure(host, ce, host.wasJustAdded(), isInitialized);
+                notifyOwnerWhenDefunct(isDown);
+            }
+        }
+
+        // Force the connection to close to make sure the future completes. Otherwise force() might never get called and
+        // threads will wait on the future forever.
+        // (this also errors out pending handlers)
+        closeAsync().force();
+
         return e;
+    }
+
+    protected void notifyOwnerWhenDefunct(boolean hostIsDown) {
     }
 
     public String keyspace() {
@@ -257,7 +295,7 @@ class Connection {
             return;
 
         try {
-            logger.trace("[{}] Setting keyspace {}", name, keyspace);
+            logger.trace("{} Setting keyspace {}", this, keyspace);
             long timeout = factory.getConnectTimeoutMillis();
             // Note: we quote the keyspace below, because the name is the one coming from Cassandra, so it's in the right case already
             Future future = write(new Requests.Query("USE \"" + keyspace + '"'));
@@ -333,7 +371,7 @@ class Connection {
             throw new ConnectionException(address, "Connection has been closed");
         }
 
-        logger.trace("[{}] writing request {}", name, request);
+        logger.trace("{} writing request {}", this, request);
         writer.incrementAndGet();
         channel.write(request).addListener(writeHandler(request, handler));
         return handler;
@@ -347,7 +385,7 @@ class Connection {
                 writer.decrementAndGet();
 
                 if (!writeFuture.isSuccess()) {
-                    logger.debug("[{}] Error writing request {}", name, request);
+                    logger.debug("{} Error writing request {}", Connection.this, request);
                     // Remove this handler from the dispatcher so it don't get notified of the error
                     // twice (we will fail that method already)
                     dispatcher.removeHandler(handler.streamId, true);
@@ -358,9 +396,9 @@ class Connection {
                     } else {
                         ce = new TransportException(address, "Error writing", writeFuture.getCause());
                     }
-                    handler.callback.onException(Connection.this, defunct(ce), System.nanoTime() - handler.startTime);
+                    handler.callback.onException(Connection.this, defunct(ce), System.nanoTime() - handler.startTime, handler.retryCount);
                 } else {
-                    logger.trace("[{}] request sent successfully", name);
+                    logger.trace("{} request sent successfully", Connection.this);
                 }
             }
         };
@@ -370,23 +408,58 @@ class Connection {
         return closeFuture.get() != null;
     }
 
+    /**
+     * Closes the connection: no new writes will be accepted after this method has returned.
+     *
+     * However, a closed connection might still have ongoing queries awaiting for their result.
+     * When all these ongoing queries have completed, the underlying channel will be closed; we
+     * refer to this final state as "terminated".
+     *
+     * @return a future that will complete once the connection has terminated.
+     *
+     * @see #terminate(boolean, boolean)
+     */
     public CloseFuture closeAsync() {
 
         ConnectionCloseFuture future = new ConnectionCloseFuture();
-        if (!closeFuture.compareAndSet(null, future))
-        {
+        if (!closeFuture.compareAndSet(null, future)) {
             // close had already been called, return the existing future
             return closeFuture.get();
         }
 
-        logger.trace("[{}] closing connection", name);
+        logger.debug("{} closing connection", this);
 
-        // New writes will be refused now that the future is setup.
-        // We must now wait on the last ongoing queries to return, which will in turn trigger
-        // the closing of the channel. However, if there no ongoing query, signal now.
-        if (dispatcher.pending.isEmpty())
-            future.force();
+        boolean terminated = terminate(false, false);
+        if (!terminated)
+            factory.reaper.register(this);
         return future;
+    }
+
+    /**
+     * @return whether the connection has actually terminated
+     */
+    boolean terminate(boolean evenIfPending, boolean logWarnings) {
+        assert isClosed();
+        ConnectionCloseFuture future = closeFuture.get();
+
+        if (future.isDone()) {
+            logger.debug("{} has already terminated", this);
+            return true;
+        } else {
+            // This method is used both by normal code and by ConnectionReaper. Since the latter is a bug detection
+            // mechanism and logs warnings when it runs, we synchronize to avoid false warnings if they race.
+            synchronized (terminationLock) {
+                if (evenIfPending || dispatcher.pending.isEmpty()) {
+                    if (logWarnings)
+                        logger.warn("Forcing termination of {}. This should not happen and is likely a bug, please report.", this);
+                    future.force();
+                    return true;
+                } else {
+                    logger.debug("Not terminating {}: there are still pending requests", this);
+                    return false;
+                }
+            }
+        }
     }
 
     @Override
@@ -405,6 +478,8 @@ class Connection {
 
         private final ConcurrentMap<Host, AtomicInteger> idGenerators = new ConcurrentHashMap<Host, AtomicInteger>();
         public final DefaultResponseHandler defaultHandler;
+        final Cluster.Manager manager;
+        final Cluster.ConnectionReaper reaper;
         public final Configuration configuration;
 
         public final AuthProvider authProvider;
@@ -412,8 +487,10 @@ class Connection {
 
         volatile int protocolVersion;
 
-        Factory(DefaultResponseHandler defaultHandler, Configuration configuration) {
-            this.defaultHandler = defaultHandler;
+        Factory(Cluster.Manager manager, Configuration configuration) {
+            this.defaultHandler = manager;
+            this.manager = manager;
+            this.reaper = manager.reaper;
             this.configuration = configuration;
             this.authProvider = configuration.getProtocolOptions().getAuthProvider();
             this.protocolVersion = configuration.getProtocolOptions().initialProtocolVersion;
@@ -430,8 +507,8 @@ class Connection {
          *
          * @throws ConnectionException if connection attempt fails.
          */
-        public Connection open(Host host) throws ConnectionException, InterruptedException, UnsupportedProtocolVersionException {
-            InetAddress address = host.getAddress();
+        public Connection open(Host host) throws ConnectionException, InterruptedException, UnsupportedProtocolVersionException, ClusterNameMismatchException {
+            InetSocketAddress address = host.getSocketAddress();
 
             if (isShutdown)
                 throw new ConnectionException(address, "Connection factory is shut down");
@@ -443,8 +520,8 @@ class Connection {
         /**
          * Same as open, but associate the created connection to the provided connection pool.
          */
-        public PooledConnection open(HostConnectionPool pool) throws ConnectionException, InterruptedException, UnsupportedProtocolVersionException {
-            InetAddress address = pool.host.getAddress();
+        public PooledConnection open(HostConnectionPool pool) throws ConnectionException, InterruptedException, UnsupportedProtocolVersionException, ClusterNameMismatchException {
+            InetSocketAddress address = pool.host.getSocketAddress();
 
             if (isShutdown)
                 throw new ConnectionException(address, "Connection factory is shut down");
@@ -538,19 +615,22 @@ class Connection {
 
             if (releaseStreamId)
                 streamIdHandler.release(streamId);
+
+            if (isClosed())
+                terminate(false, false);
         }
 
         @Override
         public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) {
             if (!(e.getMessage() instanceof Message.Response)) {
                 String msg = asDebugString(e.getMessage());
-                logger.error("[{}] Received unexpected message: {}", name, msg);
+                logger.error("{} Received unexpected message: {}", Connection.this, msg);
                 defunct(new TransportException(address, "Unexpected message received: " + msg));
             } else {
                 Message.Response response = (Message.Response)e.getMessage();
                 int streamId = response.getStreamId();
 
-                logger.trace("[{}] received: {}", name, e.getMessage());
+                logger.trace("{} received: {}", Connection.this, e.getMessage());
 
                 if (streamId < 0) {
                     factory.defaultHandler.handle(response);
@@ -571,23 +651,22 @@ class Connection {
                      */
                     streamIdHandler.unmark(streamId);
                     if (logger.isDebugEnabled())
-                        logger.debug("[{}] Response received on stream {} but no handler set anymore (either the request has "
-                                   + "timed out or it was closed due to another error). Received message is {}", name, streamId, asDebugString(response));
+                        logger.debug("{} Response received on stream {} but no handler set anymore (either the request has "
+                                   + "timed out or it was closed due to another error). Received message is {}", Connection.this, streamId, asDebugString(response));
                     return;
                 }
                 handler.cancelTimeout();
-                handler.callback.onSet(Connection.this, response, System.nanoTime() - handler.startTime);
+                handler.callback.onSet(Connection.this, response, System.nanoTime() - handler.startTime, handler.retryCount);
 
-                // If we happen to be closed and we're the last outstanding request, we need to signal the close future
+                // If we happen to be closed and we're the last outstanding request, we need to terminate the connection
                 // (note: this is racy as the signaling can be called more than once, but that's not a problem)
-                if (isClosed() && pending.isEmpty())
-                    closeFuture.get().force();
+                if (isClosed())
+                    terminate(false, false);
             }
         }
 
         // Make sure we don't print huge responses in debug/error logs.
-        private String asDebugString(Object obj)
-        {
+        private String asDebugString(Object obj) {
             if (obj == null)
                 return "null";
 
@@ -600,8 +679,8 @@ class Connection {
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, ExceptionEvent e) {
-            if (logger.isTraceEnabled())
-                logger.trace(String.format("[%s] connection error", name), e.getCause());
+            if (logger.isDebugEnabled())
+                logger.debug(String.format("%s connection error", Connection.this), e.getCause());
 
             // Ignore exception while writing, this will be handled by write() directly
             if (writer.get() > 0)
@@ -615,18 +694,21 @@ class Connection {
             while (iter.hasNext())
             {
                 ResponseHandler handler = iter.next();
-                handler.callback.onException(Connection.this, ce, System.nanoTime() - handler.startTime);
+                handler.cancelTimeout();
+                handler.callback.onException(Connection.this, ce, System.nanoTime() - handler.startTime, handler.retryCount);
                 iter.remove();
             }
         }
 
         @Override
         public void channelClosed(ChannelHandlerContext ctx, ChannelStateEvent e) {
-            // If we've closed the channel server side then we don't really want to defunct the connection, but
+            // If we've closed the channel client side then we don't really want to defunct the connection, but
             // if there is remaining thread waiting on us, we still want to wake them up
-            if (isClosed())
+            if (!isInitialized || isClosed()) {
                 errorOutAllHandler(new TransportException(address, "Channel has been closed"));
-            else
+                // we still want to force so that the future completes
+                Connection.this.closeAsync().force();
+            } else
                 defunct(new TransportException(address, "Channel has been closed"));
         }
     }
@@ -664,7 +746,7 @@ class Connection {
     static class Future extends AbstractFuture<Message.Response> implements RequestHandler.Callback {
 
         private final Message.Request request;
-        private volatile InetAddress address;
+        private volatile InetSocketAddress address;
 
         public Future(Message.Request request) {
             this.request = request;
@@ -681,18 +763,24 @@ class Connection {
         }
 
         @Override
-        public void onSet(Connection connection, Message.Response response, ExecutionInfo info, Statement statement, long latency) {
-            onSet(connection, response, latency);
+        public int retryCount() {
+            // This is ignored, as there is no retry logic in this class
+            return 0;
         }
 
         @Override
-        public void onSet(Connection connection, Message.Response response, long latency) {
+        public void onSet(Connection connection, Message.Response response, ExecutionInfo info, Statement statement, long latency) {
+            onSet(connection, response, latency, 0);
+        }
+
+        @Override
+        public void onSet(Connection connection, Message.Response response, long latency, int retryCount) {
             this.address = connection.address;
             super.set(response);
         }
 
         @Override
-        public void onException(Connection connection, Exception exception, long latency) {
+        public void onException(Connection connection, Exception exception, long latency, int retryCount) {
             // If all nodes are down, we will get a null connection here. This is fine, if we have
             // an exception, consumers shouldn't assume the address is not null.
             if (connection != null)
@@ -701,22 +789,24 @@ class Connection {
         }
 
         @Override
-        public void onTimeout(Connection connection, long latency) {
+        public boolean onTimeout(Connection connection, long latency, int retryCount) {
             assert connection != null; // We always timeout on a specific connection, so this shouldn't be null
             this.address = connection.address;
             super.setException(new ConnectionException(connection.address, "Operation timed out"));
+            return true;
         }
 
-        public InetAddress getAddress() {
+        public InetSocketAddress getAddress() {
             return address;
         }
     }
 
     interface ResponseCallback {
         public Message.Request request();
-        public void onSet(Connection connection, Message.Response response, long latency);
-        public void onException(Connection connection, Exception exception, long latency);
-        public void onTimeout(Connection connection, long latency);
+        public int retryCount();
+        public void onSet(Connection connection, Message.Response response, long latency, int retryCount);
+        public void onException(Connection connection, Exception exception, long latency, int retryCount);
+        public boolean onTimeout(Connection connection, long latency, int retryCount);
     }
 
     static class ResponseHandler {
@@ -724,6 +814,7 @@ class Connection {
         public final Connection connection;
         public final int streamId;
         public final ResponseCallback callback;
+        public final int retryCount;
 
         private final Timeout timeout;
         private final long startTime;
@@ -732,6 +823,7 @@ class Connection {
             this.connection = connection;
             this.streamId = connection.dispatcher.streamIdHandler.next();
             this.callback = callback;
+            this.retryCount = callback.retryCount();
 
             long timeoutMs = connection.factory.getReadTimeoutMillis();
             this.timeout = timeoutMs <= 0 ? null : connection.factory.timer.newTimeout(onTimeoutTask(), timeoutMs, TimeUnit.MILLISECONDS);
@@ -750,14 +842,16 @@ class Connection {
             // were, a new request could reuse that ID but get the answer to the request we just gave up on instead
             // of its own answer, and we would have no way to detect that.
             connection.dispatcher.removeHandler(streamId, false);
+            if (connection instanceof PooledConnection)
+                ((PooledConnection)connection).release();
         }
 
         private TimerTask onTimeoutTask() {
             return new TimerTask() {
                 @Override
                 public void run(Timeout timeout) {
-                    callback.onTimeout(connection, System.nanoTime() - startTime);
-                    cancelHandler();
+                    if (callback.onTimeout(connection, System.nanoTime() - startTime, retryCount))
+                        cancelHandler();
                 }
             };
         }

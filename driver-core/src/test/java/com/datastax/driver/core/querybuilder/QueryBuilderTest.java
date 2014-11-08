@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -59,6 +59,14 @@ public class QueryBuilderTest {
 
         query = "SELECT DISTINCT longName AS a,ttl(longName) AS ttla FROM foo LIMIT :limit;";
         select = select().distinct().column("longName").as("a").ttl("longName").as("ttla").from("foo").limit(bindMarker("limit"));
+        assertEquals(select.toString(), query);
+
+        query = "SELECT DISTINCT longName AS a,ttl(longName) AS ttla FROM foo WHERE k IN () LIMIT :limit;";
+        select = select().distinct().column("longName").as("a").ttl("longName").as("ttla").from("foo").where(in("k")).limit(bindMarker("limit"));
+        assertEquals(select.toString(), query);
+
+        query = "SELECT * FROM foo WHERE bar=:barmark AND baz=:bazmark LIMIT :limit;";
+        select = select().all().from("foo").where().and(eq("bar", bindMarker("barmark"))).and(eq("baz", bindMarker("bazmark"))).limit(bindMarker("limit"));
         assertEquals(select.toString(), query);
 
         query = "SELECT a FROM foo WHERE k IN ();";
@@ -280,7 +288,7 @@ public class QueryBuilderTest {
         delete = delete("a", "b", "c").from("foo");
         assertEquals(delete.toString(), query);
 
-        query = "DELETE  FROM foo USING TIMESTAMP 1240003134 WHERE k='value';";
+        query = "DELETE FROM foo USING TIMESTAMP 1240003134 WHERE k='value';";
         delete = delete().all().from("foo").using(timestamp(1240003134L)).where(eq("k", "value"));
         assertEquals(delete.toString(), query);
         delete = delete().from("foo").using(timestamp(1240003134L)).where(eq("k", "value"));
@@ -288,6 +296,10 @@ public class QueryBuilderTest {
 
         query = "DELETE a,b,c FROM foo.bar USING TIMESTAMP 1240003134 WHERE k=1;";
         delete = delete("a", "b", "c").from("foo", "bar").where().and(eq("k", 1)).using(timestamp(1240003134L));
+        assertEquals(delete.toString(), query);
+
+        query = "DELETE FROM foo.bar WHERE k1='foo' AND k2=1;";
+        delete = delete().from("foo", "bar").where(eq("k1", "foo")).and(eq("k2", 1));
         assertEquals(delete.toString(), query);
 
         try {
@@ -303,6 +315,14 @@ public class QueryBuilderTest {
         } catch (IllegalArgumentException e) {
             assertEquals(e.getMessage(), "Invalid timestamp, must be positive");
         }
+        
+        query = "DELETE FROM foo.bar WHERE k1='foo' IF EXISTS;";
+        delete = delete().from("foo", "bar").where(eq("k1", "foo")).ifExists();
+        assertEquals(delete.toString(), query);
+        
+        query = "DELETE FROM foo.bar WHERE k1='foo' IF a=1 AND b=2;";
+        delete = delete().from("foo", "bar").where(eq("k1", "foo")).onlyIf(eq("a", 1)).and(eq("b", 2));
+        assertEquals(delete.toString(), query);
     }
 
     @Test(groups = "unit")
@@ -553,23 +573,23 @@ public class QueryBuilderTest {
         String query;
         Statement delete;
 
-        query = "DELETE  FROM \"foo WHERE k=4\";";
+        query = "DELETE FROM \"foo WHERE k=4\";";
         delete = delete().from("foo WHERE k=4");
         assertEquals(delete.toString(), query);
 
-        query = "DELETE  FROM foo WHERE k='4 AND c=5';";
+        query = "DELETE FROM foo WHERE k='4 AND c=5';";
         delete = delete().from("foo").where(eq("k", "4 AND c=5"));
         assertEquals(delete.toString(), query);
 
-        query = "DELETE  FROM foo WHERE k='4'' AND c=''5';";
+        query = "DELETE FROM foo WHERE k='4'' AND c=''5';";
         delete = delete().from("foo").where(eq("k", "4' AND c='5"));
         assertEquals(delete.toString(), query);
 
-        query = "DELETE  FROM foo WHERE k='4'' OR ''1''=''1';";
+        query = "DELETE FROM foo WHERE k='4'' OR ''1''=''1';";
         delete = delete().from("foo").where(eq("k", "4' OR '1'='1"));
         assertEquals(delete.toString(), query);
 
-        query = "DELETE  FROM foo WHERE k='4; --test comment;';";
+        query = "DELETE FROM foo WHERE k='4; --test comment;';";
         delete = delete().from("foo").where(eq("k", "4; --test comment;"));
         assertEquals(delete.toString(), query);
 
@@ -582,11 +602,11 @@ public class QueryBuilderTest {
                 .where(in("a", "b", "c'); --comment"));
         assertEquals(delete.toString(), query);
 
-        query = "DELETE  FROM foo WHERE \"k=1 OR k\">42;";
+        query = "DELETE FROM foo WHERE \"k=1 OR k\">42;";
         delete = delete().from("foo").where(gt("k=1 OR k", 42));
         assertEquals(delete.toString(), query);
 
-        query = "DELETE  FROM foo WHERE token(\"k)>0 OR token(k\")>token(42);";
+        query = "DELETE FROM foo WHERE token(\"k)>0 OR token(k\")>token(42);";
         delete = delete().from("foo").where(gt(token("k)>0 OR token(k"), fcall("token", 42)));
         assertEquals(delete.toString(), query);
     }
@@ -619,5 +639,45 @@ public class QueryBuilderTest {
     public void truncateTest() throws Exception {
         assertEquals(truncate("foo").toString(), "TRUNCATE foo;");
         assertEquals(truncate("foo", quote("Bar")).toString(), "TRUNCATE foo.\"Bar\";");
+    }
+
+    @Test(groups = "unit")
+    public void quotingTest() {
+        assertEquals(QueryBuilder.select().from("Metrics", "epochs").getQueryString(),
+            "SELECT * FROM Metrics.epochs;");
+        assertEquals(QueryBuilder.select().from("Metrics", quote("epochs")).getQueryString(),
+            "SELECT * FROM Metrics.\"epochs\";");
+        assertEquals(QueryBuilder.select().from(quote("Metrics"), "epochs").getQueryString(),
+            "SELECT * FROM \"Metrics\".epochs;");
+        assertEquals(QueryBuilder.select().from(quote("Metrics"), quote("epochs")).getQueryString(),
+            "SELECT * FROM \"Metrics\".\"epochs\";");
+
+        assertEquals(QueryBuilder.insertInto("Metrics", "epochs").getQueryString(),
+            "INSERT INTO Metrics.epochs() VALUES ();");
+        assertEquals(QueryBuilder.insertInto("Metrics", quote("epochs")).getQueryString(),
+            "INSERT INTO Metrics.\"epochs\"() VALUES ();");
+        assertEquals(QueryBuilder.insertInto(quote("Metrics"), "epochs").getQueryString(),
+            "INSERT INTO \"Metrics\".epochs() VALUES ();");
+        assertEquals(QueryBuilder.insertInto(quote("Metrics"), quote("epochs")).getQueryString(),
+            "INSERT INTO \"Metrics\".\"epochs\"() VALUES ();");
+    }
+
+    @Test(groups = "unit")
+    public void compoundWhereClauseTest() throws Exception {
+        String query;
+        Statement select;
+
+        query = "SELECT * FROM foo WHERE k=4 AND (c1,c2)>('a',2);";
+        select = select().all().from("foo").where(eq("k", 4)).and(gt(Arrays.asList("c1", "c2"), Arrays.<Object>asList("a", 2)));
+        assertEquals(select.toString(), query);
+
+        query = "SELECT * FROM foo WHERE k=4 AND (c1,c2)>=('a',2) AND (c1,c2)<('b',0);";
+        select = select().all().from("foo").where(eq("k", 4)).and(gte(Arrays.asList("c1", "c2"), Arrays.<Object>asList("a", 2)))
+                                                             .and(lt(Arrays.asList("c1", "c2"), Arrays.<Object>asList("b", 0)));
+        assertEquals(select.toString(), query);
+
+        query = "SELECT * FROM foo WHERE k=4 AND (c1,c2)<=('a',2);";
+        select = select().all().from("foo").where(eq("k", 4)).and(lte(Arrays.asList("c1", "c2"), Arrays.<Object>asList("a", 2)));
+        assertEquals(select.toString(), query);
     }
 }

@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -70,9 +70,9 @@ class DefaultResultSetFuture extends AbstractFuture<ResultSet> implements Result
                             switch (scc.change) {
                                 case CREATED:
                                     if (scc.columnFamily.isEmpty()) {
-                                        session.cluster.manager.refreshSchema(connection, this, rs, null, null);
+                                        session.cluster.manager.refreshSchemaAndSignal(connection, this, rs, null, null);
                                     } else {
-                                        session.cluster.manager.refreshSchema(connection, this, rs, scc.keyspace, null);
+                                        session.cluster.manager.refreshSchemaAndSignal(connection, this, rs, scc.keyspace, null);
                                     }
                                     break;
                                 case DROPPED:
@@ -82,16 +82,16 @@ class DefaultResultSetFuture extends AbstractFuture<ResultSet> implements Result
                                         // We'll add it back if CASSANDRA-5358 changes that behavior
                                         //if (scc.keyspace.equals(session.poolsState.keyspace))
                                         //    session.poolsState.setKeyspace(null);
-                                        session.cluster.manager.refreshSchema(connection, this, rs, null, null);
+                                        session.cluster.manager.refreshSchemaAndSignal(connection, this, rs, null, null);
                                     } else {
-                                        session.cluster.manager.refreshSchema(connection, this, rs, scc.keyspace, null);
+                                        session.cluster.manager.refreshSchemaAndSignal(connection, this, rs, scc.keyspace, null);
                                     }
                                     break;
                                 case UPDATED:
                                     if (scc.columnFamily.isEmpty()) {
-                                        session.cluster.manager.refreshSchema(connection, this, rs, scc.keyspace, null);
+                                        session.cluster.manager.refreshSchemaAndSignal(connection, this, rs, scc.keyspace, null);
                                     } else {
-                                        session.cluster.manager.refreshSchema(connection, this, rs, scc.keyspace, scc.columnFamily);
+                                        session.cluster.manager.refreshSchemaAndSignal(connection, this, rs, scc.keyspace, scc.columnFamily);
                                     }
                                     break;
                                 default:
@@ -120,22 +120,23 @@ class DefaultResultSetFuture extends AbstractFuture<ResultSet> implements Result
     }
 
     @Override
-    public void onSet(Connection connection, Message.Response response, long latency) {
+    public void onSet(Connection connection, Message.Response response, long latency, int retryCount) {
         // This is only called for internal calls (i.e, when the callback is not wrapped in ResponseHandler),
         // so don't bother with ExecutionInfo.
         onSet(connection, response, null, null, latency);
     }
 
     @Override
-    public void onException(Connection connection, Exception exception, long latency) {
+    public void onException(Connection connection, Exception exception, long latency, int retryCount) {
         setException(exception);
     }
 
     @Override
-    public void onTimeout(Connection connection, long latency) {
-        // This is only called for internal calls (i.e, when the callback is not wrapped in ResponseHandler).
+    public boolean onTimeout(Connection connection, long latency, int retryCount) {
+        // This is only called for internal calls (i.e, when the future is not wrapped in RequestHandler).
         // So just set an exception for the final result, which should be handled correctly by said internal call.
         setException(new ConnectionException(connection.address, "Operation timed out"));
+        return true;
     }
 
     // We sometimes need (in the driver) to set the future from outside this class,
@@ -256,5 +257,12 @@ class DefaultResultSetFuture extends AbstractFuture<ResultSet> implements Result
             throw ((DriverException)e.getCause()).copy();
         else
             throw new DriverInternalError("Unexpected exception thrown", e.getCause());
+    }
+
+    @Override
+    public int retryCount() {
+        // This is only called for internal calls (i.e, when the future is not wrapped in RequestHandler).
+        // There is no retry logic in that case, so the value does not really matter.
+        return 0;
     }
 }

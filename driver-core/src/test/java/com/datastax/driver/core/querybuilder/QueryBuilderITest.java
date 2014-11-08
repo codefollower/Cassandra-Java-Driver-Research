@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -167,23 +167,23 @@ public class QueryBuilderITest extends CCMBridge.PerClassSingleNodeCluster {
         String query;
         Statement delete;
 
-        query = "DELETE  FROM \"foo WHERE k=4\";";
+        query = "DELETE FROM \"foo WHERE k=4\";";
         delete = delete().from("foo WHERE k=4");
         assertEquals(delete.toString(), query);
 
-        query = "DELETE  FROM foo WHERE k='4 AND c=5';";
+        query = "DELETE FROM foo WHERE k='4 AND c=5';";
         delete = delete().from("foo").where(eq("k", "4 AND c=5"));
         assertEquals(delete.toString(), query);
 
-        query = "DELETE  FROM foo WHERE k='4'' AND c=''5';";
+        query = "DELETE FROM foo WHERE k='4'' AND c=''5';";
         delete = delete().from("foo").where(eq("k", "4' AND c='5"));
         assertEquals(delete.toString(), query);
 
-        query = "DELETE  FROM foo WHERE k='4'' OR ''1''=''1';";
+        query = "DELETE FROM foo WHERE k='4'' OR ''1''=''1';";
         delete = delete().from("foo").where(eq("k", "4' OR '1'='1"));
         assertEquals(delete.toString(), query);
 
-        query = "DELETE  FROM foo WHERE k='4; --test comment;';";
+        query = "DELETE FROM foo WHERE k='4; --test comment;';";
         delete = delete().from("foo").where(eq("k", "4; --test comment;"));
         assertEquals(delete.toString(), query);
 
@@ -196,13 +196,37 @@ public class QueryBuilderITest extends CCMBridge.PerClassSingleNodeCluster {
                 .where(in("a", "b", "c'); --comment"));
         assertEquals(delete.toString(), query);
 
-        query = "DELETE  FROM foo WHERE \"k=1 OR k\">42;";
+        query = "DELETE FROM foo WHERE \"k=1 OR k\">42;";
         delete = delete().from("foo").where(gt("k=1 OR k", 42));
         assertEquals(delete.toString(), query);
 
-        query = "DELETE  FROM foo WHERE token(\"k)>0 OR token(k\")>token(42);";
+        query = "DELETE FROM foo WHERE token(\"k)>0 OR token(k\")>token(42);";
         delete = delete().from("foo").where(gt(token("k)>0 OR token(k"), fcall("token", 42)));
         assertEquals(delete.toString(), query);
     }
 
+    @Test(groups = "short")
+    public void conditionalDeletesTest() throws Exception {        
+        session.execute("INSERT INTO ks.test_int (k, a, b) VALUES (1, 1, 1)");
+        
+        Statement delete;
+        Row row;
+        delete = delete().from(TestUtils.SIMPLE_KEYSPACE, TABLE_INT).where(eq("k", 2)).ifExists();
+        row = session.execute(delete).one();
+        assertFalse(row.getBool("[applied]"));
+        
+        delete = delete().from(TestUtils.SIMPLE_KEYSPACE, TABLE_INT).where(eq("k", 1)).ifExists();
+        row = session.execute(delete).one();
+        assertTrue(row.getBool("[applied]"));
+
+        session.execute("INSERT INTO ks.test_int (k, a, b) VALUES (1, 1, 1)");
+
+        delete = delete().from(TestUtils.SIMPLE_KEYSPACE, TABLE_INT).where(eq("k", 1)).onlyIf(eq("a", 1)).and(eq("b", 2));
+        row = session.execute(delete).one();
+        assertFalse(row.getBool("[applied]"));
+        
+        delete = delete().from(TestUtils.SIMPLE_KEYSPACE, TABLE_INT).where(eq("k", 1)).onlyIf(eq("a", 1)).and(eq("b", 1));
+        row = session.execute(delete).one();
+        assertTrue(row.getBool("[applied]"));
+    }
 }

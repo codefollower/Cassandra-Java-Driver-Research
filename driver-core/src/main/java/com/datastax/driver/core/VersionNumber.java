@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -63,6 +63,8 @@ public class VersionNumber implements Comparable<VersionNumber> {
      * "patch" version number, Z, can be ommitted, in which case it is assumed to be 0.
      *
      * @param version the string to parse
+     * @return the parsed version number.
+     *
      * @throws IllegalArgumentException if the provided string does not
      * represent a valid version.
      */

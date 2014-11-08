@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ public class Insert extends BuiltStatement {
 
     Insert(TableMetadata table) {
         super(table);
-        this.table = table.getName();
+        this.table = escapeId(table.getName());
         this.usings = new Options(this);
     }
 

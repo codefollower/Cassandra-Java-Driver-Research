@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -30,6 +30,7 @@ public class DefaultPreparedStatement implements PreparedStatement{
     volatile ByteBuffer routingKey;
 
     volatile ConsistencyLevel consistency;
+    volatile ConsistencyLevel serialConsistency;
     volatile boolean traceQuery;
     volatile RetryPolicy retryPolicy;
 
@@ -49,9 +50,9 @@ public class DefaultPreparedStatement implements PreparedStatement{
 
         List<ColumnMetadata> partitionKeyColumns = null;
         int[] pkIndexes = null;
-        KeyspaceMetadata km = clusterMetadata.getKeyspace(defs.getKeyspace(0));
+        KeyspaceMetadata km = clusterMetadata.getKeyspace(Metadata.quote(defs.getKeyspace(0)));
         if (km != null) {
-            TableMetadata tm = km.getTable(defs.getTable(0));
+            TableMetadata tm = km.getTable(Metadata.quote(defs.getTable(0)));
             if (tm != null) {
                 partitionKeyColumns = tm.getPartitionKey();
                 pkIndexes = new int[partitionKeyColumns.size()];
@@ -116,8 +117,7 @@ public class DefaultPreparedStatement implements PreparedStatement{
         return this;
     }
 
-    public ByteBuffer getRoutingKey()
-    {
+    public ByteBuffer getRoutingKey() {
         return routingKey;
     }
 
@@ -128,6 +128,17 @@ public class DefaultPreparedStatement implements PreparedStatement{
 
     public ConsistencyLevel getConsistencyLevel() {
         return consistency;
+    }
+
+    public PreparedStatement setSerialConsistencyLevel(ConsistencyLevel serialConsistency) {
+        if (serialConsistency != ConsistencyLevel.SERIAL && serialConsistency != ConsistencyLevel.LOCAL_SERIAL)
+            throw new IllegalArgumentException();
+        this.serialConsistency = serialConsistency;
+        return this;
+    }
+
+    public ConsistencyLevel getSerialConsistencyLevel() {
+        return serialConsistency;
     }
 
     public String getQueryString() {

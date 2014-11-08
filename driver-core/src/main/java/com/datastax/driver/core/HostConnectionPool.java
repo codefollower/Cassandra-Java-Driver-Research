@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.MoreExecutors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,7 +51,7 @@ class HostConnectionPool {
     public volatile HostDistance hostDistance;
     private final SessionManager manager;
 
-    private final List<PooledConnection> connections;
+    final List<PooledConnection> connections;
     private final AtomicInteger open;
     private final Set<Connection> trash = new CopyOnWriteArraySet<Connection>();
 
@@ -64,7 +65,7 @@ class HostConnectionPool {
 
     private final AtomicReference<CloseFuture> closeFuture = new AtomicReference<CloseFuture>();
 
-    public HostConnectionPool(Host host, HostDistance hostDistance, SessionManager manager) throws ConnectionException, UnsupportedProtocolVersionException {
+    public HostConnectionPool(Host host, HostDistance hostDistance, SessionManager manager) throws ConnectionException, UnsupportedProtocolVersionException, ClusterNameMismatchException {
         assert hostDistance != HostDistance.IGNORED;
         this.host = host;
         this.hostDistance = hostDistance;
@@ -87,6 +88,12 @@ class HostConnectionPool {
             Thread.currentThread().interrupt();
             // If asked to interrupt, we can skip opening core connections, the pool will still work.
             // But we ignore otherwise cause I'm not sure we can do much better currently.
+        } catch (RuntimeException e) {
+            // Rethrow but make sure to properly close the connections in our temporary list.
+            for (PooledConnection connection : l) {
+                connection.closeAsync().force();
+            }
+            throw e;
         }
         this.connections = new CopyOnWriteArrayList<PooledConnection>(l);
         this.open = new AtomicInteger(connections.size());
@@ -102,7 +109,7 @@ class HostConnectionPool {
         if (isClosed())
             // Note: throwing a ConnectionException is probably fine in practice as it will trigger the creation of a new host.
             // That being said, maybe having a specific exception could be cleaner.
-            throw new ConnectionException(host.getAddress(), "Pool is shutdown");
+            throw new ConnectionException(host.getSocketAddress(), "Pool is shutdown");
 
         if (connections.isEmpty()) {
             for (int i = 0; i < options().getCoreConnectionsPerHost(hostDistance); i++) {
@@ -132,7 +139,7 @@ class HostConnectionPool {
         if (leastBusy == null) {
             // We could have raced with a shutdown since the last check
             if (isClosed())
-                throw new ConnectionException(host.getAddress(), "Pool is shutdown");
+                throw new ConnectionException(host.getSocketAddress(), "Pool is shutdown");
             // This might maybe happen if the number of core connections per host is 0 and a connection was trashed between
             // the previous check to connections and now. But in that case, the line above will have trigger the creation of
             // a new connection, so just wait that connection and move on
@@ -192,6 +199,9 @@ class HostConnectionPool {
     }
 
     private PooledConnection waitForConnection(long timeout, TimeUnit unit) throws ConnectionException, TimeoutException {
+        if (timeout == 0)
+            throw new TimeoutException();
+
         long start = System.nanoTime();
         long remaining = timeout;
         do {
@@ -204,7 +214,7 @@ class HostConnectionPool {
             }
 
             if (isClosed())
-                throw new ConnectionException(host.getAddress(), "Pool is shutdown");
+                throw new ConnectionException(host.getSocketAddress(), "Pool is shutdown");
 
             int minInFlight = Integer.MAX_VALUE;
             PooledConnection leastBusy = null;
@@ -242,27 +252,33 @@ class HostConnectionPool {
             return;
         }
 
+        if (connection.isDefunct()) {
+            // As part of making it defunct, we have already replaced it or
+            // closed the pool.
+            return;
+        }
+
         int inFlight = connection.inFlight.decrementAndGet();
 
-        if (connection.isDefunct()) {
-            if (manager.cluster.manager.signalConnectionFailure(host, connection.lastException(), false))
-                closeAsync();
-            else
-                replace(connection);
+        if (trash.contains(connection)) {
+            if (inFlight == 0 && trash.remove(connection))
+                close(connection);
         } else {
-
-            if (trash.contains(connection) && inFlight == 0) {
-                if (trash.remove(connection))
-                    close(connection);
-                return;
-            }
-
             if (connections.size() > options().getCoreConnectionsPerHost(hostDistance) && inFlight <= options().getMinSimultaneousRequestsPerConnectionThreshold(hostDistance)) {
-                trashConnection(connection);
+                connection.setTrashTimeIn(options().getIdleTimeoutSeconds());
             } else if (connection.maxAvailableStreams() < MIN_AVAILABLE_STREAMS) {
                 replaceConnection(connection);
             } else {
+                connection.cancelTrashTime();
                 signalAvailableConnection();
+            }
+        }
+    }
+
+    void trashIdleConnections(long now) {
+        for (PooledConnection connection : connections) {
+            if (connection.getTrashTime() < now) {
+                trashConnection(connection);
             }
         }
     }
@@ -270,23 +286,32 @@ class HostConnectionPool {
     // Trash the connection and create a new one, but we don't call trashConnection
     // directly because we want to make sure the connection is always trashed.
     private void replaceConnection(PooledConnection connection) {
-        open.decrementAndGet();
+        if (connection.markForTrash.compareAndSet(false, true))
+            open.decrementAndGet();
         maybeSpawnNewConnection();
         doTrashConnection(connection);
     }
 
     private boolean trashConnection(PooledConnection connection) {
-        // First, make sure we don't go below core connections
-        for(;;) {
-            int opened = open.get();
-            if (opened <= options().getCoreConnectionsPerHost(hostDistance))
-                return false;
+        if (connection.markForTrash.compareAndSet(false, true)) {
+            // First, make sure we don't go below core connections
+            for (;;) {
+                int opened = open.get();
+                if (opened <= options().getCoreConnectionsPerHost(hostDistance)) {
+                    connection.markForTrash.set(false);
+                    connection.cancelTrashTime();
+                    return false;
+                }
 
-            if (open.compareAndSet(opened, opened - 1))
-                break;
+                if (open.compareAndSet(opened, opened - 1))
+                    break;
+            }
+
+            doTrashConnection(connection);
         }
-
-        doTrashConnection(connection);
+        // If compareAndSet failed, it means we raced with another thread that will execute doTrashConnection.
+        // Since trashConnection is called from a scheduled task, we're sure that the current thread did not modify
+        // inFlight, so the other thread will take care of closing the connection if necessary (i.e. if inFlight == 0).
         return true;
     }
 
@@ -328,20 +353,20 @@ class HostConnectionPool {
         } catch (ConnectionException e) {
             open.decrementAndGet();
             logger.debug("Connection error to {} while creating additional connection", host);
-            if (manager.cluster.manager.signalConnectionFailure(host, e, false))
-                closeAsync();
             return false;
         } catch (AuthenticationException e) {
             // This shouldn't really happen in theory
             open.decrementAndGet();
             logger.error("Authentication error while creating additional connection (error is: {})", e.getMessage());
-            closeAsync();
             return false;
         } catch (UnsupportedProtocolVersionException e) {
             // This shouldn't happen since we shouldn't have been able to connect in the first place
             open.decrementAndGet();
             logger.error("UnsupportedProtocolVersionException error while creating additional connection (error is: {})", e.getMessage());
-            closeAsync();
+            return false;
+        } catch (ClusterNameMismatchException e) {
+            open.decrementAndGet();
+            logger.error("ClusterNameMismatchException error while creating additional connection (error is: {})", e.getMessage());
             return false;
         }
     }
@@ -359,25 +384,21 @@ class HostConnectionPool {
         manager.blockingExecutor().submit(newConnectionTask);
     }
 
-    private void replace(final Connection connection) {
+    void replaceDefunctConnection(final PooledConnection connection) {
+        if (connection.markForTrash.compareAndSet(false, true))
+            open.decrementAndGet();
         connections.remove(connection);
-
+        connection.closeAsync();
         manager.blockingExecutor().submit(new Runnable() {
             @Override
             public void run() {
-                connection.closeAsync();
                 addConnectionIfUnderMaximum();
             }
         });
     }
 
     private void close(final Connection connection) {
-        manager.blockingExecutor().submit(new Runnable() {
-            @Override
-            public void run() {
-                connection.closeAsync();
-            }
-        });
+        connection.closeAsync();
     }
 
     public boolean isClosed() {
@@ -389,8 +410,6 @@ class HostConnectionPool {
         CloseFuture future = closeFuture.get();
         if (future != null)
             return future;
-
-        logger.debug("Shutting down pool");
 
         // Wake up all threads that waits
         signalAllAvailableConnection();
@@ -407,13 +426,17 @@ class HostConnectionPool {
     }
 
     private List<CloseFuture> discardAvailableConnections() {
+        // This can happen if creating the connections in the constructor fails
+        if (connections == null)
+            return Lists.newArrayList(CloseFuture.immediateFuture());
 
         List<CloseFuture> futures = new ArrayList<CloseFuture>(connections.size());
-        for (Connection connection : connections) {
+        for (final PooledConnection connection : connections) {
             CloseFuture future = connection.closeAsync();
             future.addListener(new Runnable() {
                 public void run() {
-                    open.decrementAndGet();
+                    if (connection.markForTrash.compareAndSet(false, true))
+                        open.decrementAndGet();
                 }
             }, MoreExecutors.sameThreadExecutor());
             futures.add(future);

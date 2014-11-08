@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -21,8 +21,11 @@ import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.*;
 
+import static org.testng.Assert.fail;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.testng.SkipException;
 
 /**
  * A number of static fields/methods handy for tests.
@@ -356,5 +359,27 @@ public abstract class TestUtils {
 
     private static boolean testHost(Host host, boolean testForDown) {
         return testForDown ? !host.isUp() : host.isUp();
+    }
+
+    public static void versionCheck(double majorCheck, int minorCheck, String skipString) {
+        String version = System.getProperty("cassandra.version");
+        String[] versionArray = version.split("\\.|-");
+        double major = Double.parseDouble(versionArray[0] + "." + versionArray[1]);
+        int minor = Integer.parseInt(versionArray[2]);
+
+        if (major < majorCheck || (major == majorCheck && minor < minorCheck)) {
+            throw new SkipException(skipString);
+        }
+    }
+
+    /** Utility method to find the {@code Host} object corresponding to a node in a cluster. */
+    public static Host findHost(Cluster cluster, int hostNumber) {
+        String address = CCMBridge.ipOfNode(hostNumber);
+        for (Host host : cluster.getMetadata().getAllHosts()) {
+            if (host.getAddress().getHostAddress().equals(address))
+                return host;
+        }
+        fail(address + " not found in cluster metadata");
+        return null; // never reached
     }
 }

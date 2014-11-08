@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -15,9 +15,10 @@
  */
 package com.datastax.driver.core;
 
-import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import org.jboss.netty.buffer.ChannelBuffer;
 
@@ -80,7 +81,7 @@ class Responses {
             this.infos = infos;
         }
 
-        public DriverException asException(InetAddress host) {
+        public DriverException asException(InetSocketAddress host) {
             switch (code) {
                 case SERVER_ERROR:     return new DriverInternalError(String.format("An unexpected error occurred server side on %s: %s", host, message));
                 case PROTOCOL_ERROR:   return new DriverInternalError("An unexpected protocol error occurred. This is a bug in this library, please report: " + message);

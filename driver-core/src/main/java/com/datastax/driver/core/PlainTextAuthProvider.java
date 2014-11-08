@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 package com.datastax.driver.core;
 
 import javax.security.sasl.SaslException;
-import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.util.Map;
 
 import com.google.common.base.Charsets;
@@ -54,10 +54,8 @@ public class PlainTextAuthProvider implements AuthProvider {
      * @param host the Cassandra host with which we want to authenticate
      * @return an Authenticator instance which can be used to perform
      * authentication negotiations on behalf of the client
-     * @throws SaslException if an unsupported SASL mechanism is supplied
-     * or an error is encountered when initialising the authenticator
      */
-    public Authenticator newAuthenticator(InetAddress host) {
+    public Authenticator newAuthenticator(InetSocketAddress host) {
         return new PlainTextAuthenticator(username, password);
     }
 

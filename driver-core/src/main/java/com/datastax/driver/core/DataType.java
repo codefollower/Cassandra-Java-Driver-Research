@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -110,6 +110,7 @@ public class DataType {
          *
          * The correspondence between CQL types and java ones is as follow:
          * <table>
+         *   <caption>DataType to Java class correspondence</caption>
          *   <tr><th>DataType (CQL)</th><th>Java Class</th></tr>
          *   <tr><td>ASCII         </td><td>String</td></tr>
          *   <tr><td>BIGINT        </td><td>Long</td></tr>
@@ -413,7 +414,7 @@ public class DataType {
      *   <li>For maps, this method returns two arguments, the first one is the
      *   type of the map keys, the second one is the type of the map
      *   values.</li>
-     * <ul>
+     * </ul>
      *
      * @return an immutable list containing the type arguments of this type.
      */

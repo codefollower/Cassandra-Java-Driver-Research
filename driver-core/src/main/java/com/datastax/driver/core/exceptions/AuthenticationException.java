@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package com.datastax.driver.core.exceptions;
 
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 
 /**
  * Indicates an error during the authentication phase while connecting to a node.
@@ -24,30 +25,41 @@ public class AuthenticationException extends DriverException {
 
     private static final long serialVersionUID = 0;
 
-    private final InetAddress host;
+    private final InetSocketAddress address;
 
-    public AuthenticationException(InetAddress host, String message) {
-        super(String.format("Authentication error on host %s: %s", host, message));
-        this.host = host;
+    public AuthenticationException(InetSocketAddress address, String message) {
+        super(String.format("Authentication error on host %s: %s", address, message));
+        this.address = address;
     }
 
-    private AuthenticationException(String message, Throwable cause, InetAddress host)
+    private AuthenticationException(String message, Throwable cause, InetSocketAddress address)
     {
         super(message, cause);
-        this.host = host;
+        this.address = address;
     }
 
     /**
      * The host for which the authentication failed.
+     * <p>
+     * This is a shortcut for {@code getAddress().getAddress()}.
      *
      * @return the host for which the authentication failed.
      */
     public InetAddress getHost() {
-        return host;
+        return address.getAddress();
+    }
+
+    /**
+     * The full address of the host for which the authentication failed.
+     *
+     * @return the host for which the authentication failed.
+     */
+    public InetSocketAddress getAddress() {
+        return address;
     }
 
     @Override
     public DriverException copy() {
-        return new AuthenticationException(getMessage(), this, host);
+        return new AuthenticationException(getMessage(), this, address);
     }
 }

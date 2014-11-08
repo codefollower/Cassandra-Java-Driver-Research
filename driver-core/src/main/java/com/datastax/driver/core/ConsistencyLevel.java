@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -54,5 +54,14 @@ public enum ConsistencyLevel {
         if (code < 0 || code >= codeIdx.length)
             throw new DriverInternalError(String.format("Unknown code %d for a consistency level", code));
         return codeIdx[code];
+    }
+
+    /**
+     * Whether or not the the consistency level applies to the local data-center only.
+     *
+     * @return whether this consistency level is {@code LOCAL_ONE} or {@code LOCAL_QUORUM}.
+     */
+    public boolean isDCLocal() {
+        return this == LOCAL_ONE || this == LOCAL_QUORUM;
     }
 }

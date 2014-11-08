@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -15,21 +15,21 @@
  */
 package com.datastax.driver.core;
 
-import java.net.InetAddress;
+import java.net.InetSocketAddress;
 
 class ConnectionException extends Exception {
 
     private static final long serialVersionUID = 0;
 
-    public final InetAddress address;
+    public final InetSocketAddress address;
 
-    public ConnectionException(InetAddress address, String msg, Throwable cause)
+    public ConnectionException(InetSocketAddress address, String msg, Throwable cause)
     {
         super(msg, cause);
         this.address = address;
     }
 
-    public ConnectionException(InetAddress address, String msg)
+    public ConnectionException(InetSocketAddress address, String msg)
     {
         super(msg);
         this.address = address;

@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -514,6 +514,23 @@ public class DataTypeTest extends CCMBridge.PerClassSingleNodeCluster {
             DataType.list(DataType.bigint()).serialize(l);
             fail("This should not have worked");
         } catch (InvalidTypeException e) { /* That's what we want */ }
+    }
+
+    @Test(groups = "short")
+    public void primitiveInsertWithValueTest() throws Throwable {
+        TestUtils.versionCheck(2.0, 0, "This feature requires protocol v2");
+        for (DataType dt : DataType.allPrimitiveTypes()) {
+            if (exclude(dt))
+                continue;
+
+            session.execute(String.format(PRIMITIVE_INSERT_FORMAT, dt, "?"), SAMPLE_DATA.get(dt), SAMPLE_DATA.get(dt));
+        }
+        // Kind of checking results (kind of because the schema used by this class make it ultra painful
+        // somehow to use a different partition for different tests, so that the insert done here actually
+        // conflict with the one in primitiveInsertTest. So all we check is that we don't write something
+        // horribly wrong, but if the inserts of this test where to do nothing, the following check might
+        // not work. We should fix the schema used by this class)
+        primitiveSelectTest();
     }
 
     /**

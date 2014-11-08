@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -56,7 +56,7 @@ public interface ResultSet extends Iterable<Row> {
     public boolean isExhausted();
 
     /**
-     * Returns the the next result from this ResultSet.
+     * Returns the next result from this ResultSet.
      *
      * @return the next row in this resultSet or null if this ResultSet is
      * exhausted.
@@ -104,20 +104,20 @@ public interface ResultSet extends Iterable<Row> {
     public int getAvailableWithoutFetching();
 
     /**
-     * Whether all results from this result set has been fetched from the
+     * Whether all results from this result set have been fetched from the
      * database.
      * <p>
      * Note that if {@code isFullyFetched()}, then {@link #getAvailableWithoutFetching}
-     * will return how much rows remains in the result set before exhaustion. But
+     * will return how many rows remain in the result set before exhaustion. But
      * please note that {@code !isFullyFetched()} never guarantees that the result set
-     * is not exhausted (you should call {@code isExhausted()} to make sure of it).
+     * is not exhausted (you should call {@code isExhausted()} to verify it).
      *
      * @return whether all results have been fetched.
      */
     public boolean isFullyFetched();
 
     /**
-     * Force the fetching the next page of results for this result set, if any.
+     * Force fetching the next page of results for this result set, if any.
      * <p>
      * This method is entirely optional. It will be called automatically while
      * the result set is consumed (through {@link #one}, {@link #all} or iteration)
@@ -133,7 +133,7 @@ public interface ResultSet extends Iterable<Row> {
      *   ResultSet rs = session.execute(...);
      *   Iterator&lt;Row&gt; iter = rs.iterator();
      *   while (iter.hasNext()) {
-     *       if (rs.getAvailableWithoutFetching() == 100 && !rs.isFullyFetched())
+     *       if (rs.getAvailableWithoutFetching() == 100 &amp;&amp; !rs.isFullyFetched())
      *           rs.fetchMoreResults();
      *       Row row = iter.next()
      *       ... process the row ...
@@ -162,8 +162,8 @@ public interface ResultSet extends Iterable<Row> {
      * Returns information on the execution of the last query made for this ResultSet.
      * <p>
      * Note that in most cases, a ResultSet is fetched with only one query, but large
-     * result sets can be paged and thus be retrieved by multiple queries. If that is
-     * the case, that method return that {@code ExecutionInfo} for the last query
+     * result sets can be paged and thus be retrieved by multiple queries. In that
+     * case this method return the {@code ExecutionInfo} for the last query
      * performed. To retrieve the information for all queries, use {@link #getAllExecutionInfo}.
      * <p>
      * The returned object includes basic information such as the queried hosts,
@@ -185,4 +185,31 @@ public interface ResultSet extends Iterable<Row> {
      * @return a list of the execution info for all the queries made for this ResultSet.
      */
     public List<ExecutionInfo> getAllExecutionInfo();
+
+    /**
+     * If the query that produced this ResultSet was a conditional update,
+     * return whether it was successfully applied.
+     * <p>
+     * This is equivalent to calling:
+     *
+     * <pre>
+     * rs.one().getBool("[applied]");
+     * </pre>
+     * <p>
+     * For consistency, this method always returns {@code true} for
+     * non-conditional queries (although there is no reason to call the method
+     * in that case). This is also the case for conditional DDL statements
+     * ({@code CREATE KEYSPACE... IF NOT EXISTS}, {@code CREATE TABLE... IF NOT EXISTS}),
+     * for which Cassandra doesn't return an {@code [applied]} column.
+     * <p>
+     * Note that, for versions of Cassandra strictly lower than 2.0.9 and 2.1.0-rc2,
+     * a server-side bug (CASSANDRA-7337) causes this method to always return
+     * {@code true} for batches containing conditional queries.
+     *
+     * @return if the query was a conditional update, whether it was applied.
+     * {@code true} for other types of queries.
+     *
+     * @see <a href="https://issues.apache.org/jira/browse/CASSANDRA-7337">CASSANDRA-7337</a>
+     */
+    public boolean wasApplied();
 }

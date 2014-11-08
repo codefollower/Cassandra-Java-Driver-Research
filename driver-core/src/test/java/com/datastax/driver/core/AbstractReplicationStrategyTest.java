@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 package com.datastax.driver.core;
 
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.Arrays;
 import java.util.List;
@@ -38,7 +39,7 @@ public class AbstractReplicationStrategyTest {
         private final String address;
 
         private HostMock(String address) throws UnknownHostException {
-            super(InetAddress.getByName(address), new ConvictionPolicy.Simple.Factory());
+            super(new InetSocketAddress(InetAddress.getByName(address), 9042), new ConvictionPolicy.Simple.Factory(), null);
             this.address = address;
         }
 
@@ -54,6 +55,19 @@ public class AbstractReplicationStrategyTest {
 
         public String getMockAddress() {
             return address;
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (!(o instanceof HostMock))
+                return false;
+
+            return address.equals(((HostMock)o).address);
+        }
+
+        @Override
+        public int hashCode() {
+            return address.hashCode();
         }
     }
 

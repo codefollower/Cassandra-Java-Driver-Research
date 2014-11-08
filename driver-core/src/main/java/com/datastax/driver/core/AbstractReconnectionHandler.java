@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -15,62 +15,88 @@
  */
 package com.datastax.driver.core;
 
-import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 
-import com.google.common.util.concurrent.Uninterruptibles;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.AbstractFuture;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.datastax.driver.core.exceptions.AuthenticationException;
 import com.datastax.driver.core.policies.ReconnectionPolicy;
 
+/**
+ * Manages periodic reconnection attempts after a host has been marked down.
+ * <p>
+ * Concurrent attempts are handled via the {@link #currentAttempt} reference passed to the constructor.
+ * For a given reference, only one handler will run at a given time. Additional handlers will cancel
+ * themselves if they find a previous handler running.
+ * <p>
+ * This class is designed for concurrency, but instances must not be shared: each thread creates and
+ * starts its own private handler, all interactions happen through {@link #currentAttempt}.
+ */
 abstract class AbstractReconnectionHandler implements Runnable {
 
     private static final Logger logger = LoggerFactory.getLogger(AbstractReconnectionHandler.class);
 
     private final ScheduledExecutorService executor;
     private final ReconnectionPolicy.ReconnectionSchedule schedule;
-    private final AtomicReference<ScheduledFuture<?>> currentAttempt;
+    /**
+     * The future that is exposed to clients, representing completion of the current active handler
+     */
+    private final AtomicReference<ListenableFuture<?>> currentAttempt;
 
-    private volatile boolean readyForNext;
-    private volatile ScheduledFuture<?> localFuture;
+    private final HandlerFuture handlerFuture = new HandlerFuture();
 
-    public AbstractReconnectionHandler(ScheduledExecutorService executor, ReconnectionPolicy.ReconnectionSchedule schedule, AtomicReference<ScheduledFuture<?>> currentAttempt) {
+    private final long initialDelayMs;
+
+    private final CountDownLatch ready = new CountDownLatch(1);
+
+    public AbstractReconnectionHandler(ScheduledExecutorService executor, ReconnectionPolicy.ReconnectionSchedule schedule, AtomicReference<ListenableFuture<?>> currentAttempt) {
+        this(executor, schedule, currentAttempt, -1);
+    }
+
+    public AbstractReconnectionHandler(ScheduledExecutorService executor, ReconnectionPolicy.ReconnectionSchedule schedule, AtomicReference<ListenableFuture<?>> currentAttempt, long initialDelayMs) {
         this.executor = executor;
         this.schedule = schedule;
         this.currentAttempt = currentAttempt;
+        this.initialDelayMs = initialDelayMs;
     }
 
-    protected abstract Connection tryReconnect() throws ConnectionException, InterruptedException, UnsupportedProtocolVersionException;
+    protected abstract Connection tryReconnect() throws ConnectionException, InterruptedException, UnsupportedProtocolVersionException, ClusterNameMismatchException;
     protected abstract void onReconnection(Connection connection);
 
     protected boolean onConnectionException(ConnectionException e, long nextDelayMs) { return true; }
     protected boolean onUnknownException(Exception e, long nextDelayMs) { return true; }
 
-    // Retrying on authentication or unsupported protocol version error is unlikely to work
-    protected boolean onAuthenticationException(AuthenticationException e, long nextDelayMs) { return false; }
+    // Retrying on authentication errors makes sense for applications that can update the credentials at runtime, we don't want to force them
+    // to restart.
+    protected boolean onAuthenticationException(AuthenticationException e, long nextDelayMs) { return true; }
+
+    // Retrying on these errors is unlikely to work
     protected boolean onUnsupportedProtocolVersionException(UnsupportedProtocolVersionException e, long nextDelayMs) { return false; }
+    protected boolean onClusterNameMismatchException(ClusterNameMismatchException e, long nextDelayMs) { return false; }
 
     public void start() {
-        long firstDelay = schedule.nextDelayMs();
+        long firstDelay = (initialDelayMs >= 0) ? initialDelayMs : schedule.nextDelayMs();
         logger.debug("First reconnection scheduled in {}ms", firstDelay);
         try {
-            localFuture = executor.schedule(this, firstDelay, TimeUnit.MILLISECONDS);
+            handlerFuture.nextTry = executor.schedule(this, firstDelay, TimeUnit.MILLISECONDS);
 
-            // If there a previous task, cancel it, so only one reconnection handler runs.
             while (true) {
-                ScheduledFuture<?> previous = currentAttempt.get();
-                if (currentAttempt.compareAndSet(previous, localFuture)) {
-                    if (previous != null)
-                        previous.cancel(false);
+                ListenableFuture<?> previous = currentAttempt.get();
+                if (previous != null && !previous.isCancelled()) {
+                    logger.debug("Found another already active handler, cancelling");
+                    handlerFuture.cancel(false);
+                    break;
+                }
+                if (currentAttempt.compareAndSet(previous, handlerFuture)) {
+                    logger.debug("Becoming the active handler");
                     break;
                 }
             }
-            readyForNext = true;
+            ready.countDown();
         } catch (RejectedExecutionException e) {
             // The executor has been shutdown, fair enough, just ignore
             logger.debug("Aborting reconnection handling since the cluster is shutting down");
@@ -79,23 +105,32 @@ abstract class AbstractReconnectionHandler implements Runnable {
 
     @Override
     public void run() {
-        // We shouldn't arrive here if the future is cancelled but better safe than sorry
-        if (localFuture.isCancelled())
+        // Just make sure we don't start the first try too fast, in case we find out in start() that we need to cancel ourselves
+        try {
+            ready.await();
+        } catch (InterruptedException e) {
+            // This can happen at shutdown
+            Thread.currentThread().interrupt();
             return;
+        }
 
-        // Don't run before ready, otherwise our cancel business might end up removing all connection attempts.
-        while (!readyForNext)
-            Uninterruptibles.sleepUninterruptibly(5, TimeUnit.MILLISECONDS);
+        if (handlerFuture.isCancelled()) {
+            logger.debug("Got cancelled, stopping");
+            currentAttempt.compareAndSet(handlerFuture, null);
+            return;
+        }
 
         try {
             onReconnection(tryReconnect());
-            currentAttempt.compareAndSet(localFuture, null);
+            handlerFuture.markAsDone();
+            currentAttempt.compareAndSet(handlerFuture, null);
+            logger.debug("Reconnection successful, cleared the future");
         } catch (ConnectionException e) {
             long nextDelay = schedule.nextDelayMs();
             if (onConnectionException(e, nextDelay))
                 reschedule(nextDelay);
             else
-                currentAttempt.compareAndSet(localFuture, null);
+                currentAttempt.compareAndSet(handlerFuture, null);
         } catch (AuthenticationException e) {
             logger.error(e.getMessage());
             long nextDelay = schedule.nextDelayMs();
@@ -103,7 +138,7 @@ abstract class AbstractReconnectionHandler implements Runnable {
                 reschedule(nextDelay);
             } else {
                 logger.error("Retry against {} have been suspended. It won't be retried unless the node is restarted.", e.getHost());
-                currentAttempt.compareAndSet(localFuture, null);
+                currentAttempt.compareAndSet(handlerFuture, null);
             }
         } catch (InterruptedException e) {
             // If interrupted, skip this attempt but still skip scheduling reconnections
@@ -116,26 +151,54 @@ abstract class AbstractReconnectionHandler implements Runnable {
                 reschedule(nextDelay);
             } else {
                 logger.error("Retry against {} have been suspended. It won't be retried unless the node is restarted.", e.address);
-                currentAttempt.compareAndSet(localFuture, null);
+                currentAttempt.compareAndSet(handlerFuture, null);
+            }
+        } catch (ClusterNameMismatchException e) {
+            logger.error(e.getMessage());
+            long nextDelay = schedule.nextDelayMs();
+            if (onClusterNameMismatchException(e, nextDelay)) {
+                reschedule(nextDelay);
+            } else {
+                logger.error("Retry against {} have been suspended. It won't be retried unless the node is restarted.", e.address);
+                currentAttempt.compareAndSet(handlerFuture, null);
             }
         } catch (Exception e) {
             long nextDelay = schedule.nextDelayMs();
             if (onUnknownException(e, nextDelay))
                 reschedule(nextDelay);
             else
-                currentAttempt.compareAndSet(localFuture, null);
+                currentAttempt.compareAndSet(handlerFuture, null);
         }
     }
 
     private void reschedule(long nextDelay) {
-        readyForNext = false;
-        ScheduledFuture<?> newFuture = executor.schedule(this, nextDelay, TimeUnit.MILLISECONDS);
-        assert localFuture != null;
-        // If it's not our future the current one, then we've been canceled
-        if (!currentAttempt.compareAndSet(localFuture, newFuture)) {
-            newFuture.cancel(false);
+        // If we got cancelled during the failed reconnection attempt that lead here, don't reschedule
+        if (handlerFuture.isCancelled()) {
+            currentAttempt.compareAndSet(handlerFuture, null);
+            return;
         }
-        localFuture = newFuture;
-        readyForNext = true;
+
+        handlerFuture.nextTry = executor.schedule(this, nextDelay, TimeUnit.MILLISECONDS);
+    }
+
+    // The future that the handler exposes to its clients via currentAttempt
+    private static class HandlerFuture extends AbstractFuture<Void> {
+        // A future representing completion of the next task submitted to the executor
+        volatile ScheduledFuture<?> nextTry;
+
+        @Override
+        public boolean cancel(boolean mayInterruptIfRunning) {
+            // This is a check-then-act, so we may race with the scheduling of the first try, but in that case
+            // we'll re-check for cancellation when this first try starts running
+            if (nextTry != null) {
+                nextTry.cancel(mayInterruptIfRunning);
+            }
+
+            return super.cancel(mayInterruptIfRunning);
+        }
+
+        void markAsDone() {
+            super.set(null);
+        }
     }
 }

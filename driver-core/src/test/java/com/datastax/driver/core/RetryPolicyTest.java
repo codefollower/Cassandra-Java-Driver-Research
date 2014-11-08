@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -16,12 +16,13 @@
 package com.datastax.driver.core;
 
 import org.testng.annotations.Test;
-import static org.testng.Assert.*;
 
 import com.datastax.driver.core.exceptions.*;
 import com.datastax.driver.core.policies.*;
+
 import static com.datastax.driver.core.TestUtils.waitFor;
 import static com.datastax.driver.core.TestUtils.waitForDownWithWait;
+import static org.testng.Assert.*;
 
 public class RetryPolicyTest extends AbstractPoliciesTest {
 
@@ -63,7 +64,7 @@ public class RetryPolicyTest extends AbstractPoliciesTest {
      */
     @Test(groups = "long")
     public void defaultRetryPolicy() throws Throwable {
-        Cluster.Builder builder = Cluster.builder();
+        Cluster.Builder builder = Cluster.builder().withLoadBalancingPolicy(new RoundRobinPolicy());
         defaultPolicyTest(builder);
     }
 
@@ -72,7 +73,8 @@ public class RetryPolicyTest extends AbstractPoliciesTest {
      */
     @Test(groups = "long")
     public void defaultLoggingPolicy() throws Throwable {
-        Cluster.Builder builder = Cluster.builder().withRetryPolicy(new LoggingRetryPolicy(DefaultRetryPolicy.INSTANCE));
+        Cluster.Builder builder = Cluster.builder().withLoadBalancingPolicy(new RoundRobinPolicy())
+                                                   .withRetryPolicy(new LoggingRetryPolicy(DefaultRetryPolicy.INSTANCE));
         defaultPolicyTest(builder);
     }
 
@@ -82,7 +84,8 @@ public class RetryPolicyTest extends AbstractPoliciesTest {
      */
     @Test(groups = "long")
     public void fallthroughRetryPolicy() throws Throwable {
-        Cluster.Builder builder = Cluster.builder().withRetryPolicy(FallthroughRetryPolicy.INSTANCE);
+        Cluster.Builder builder = Cluster.builder().withLoadBalancingPolicy(new RoundRobinPolicy())
+                                                   .withRetryPolicy(FallthroughRetryPolicy.INSTANCE);
         defaultPolicyTest(builder);
     }
 
@@ -92,7 +95,8 @@ public class RetryPolicyTest extends AbstractPoliciesTest {
      */
     @Test(groups = "long")
     public void fallthroughLoggingPolicy() throws Throwable {
-        Cluster.Builder builder = Cluster.builder().withRetryPolicy(new LoggingRetryPolicy(FallthroughRetryPolicy.INSTANCE));
+        Cluster.Builder builder = Cluster.builder().withLoadBalancingPolicy(new RoundRobinPolicy())
+                                                   .withRetryPolicy(new LoggingRetryPolicy(FallthroughRetryPolicy.INSTANCE));
         defaultPolicyTest(builder);
     }
 
@@ -116,7 +120,7 @@ public class RetryPolicyTest extends AbstractPoliciesTest {
             boolean readTimeoutOnce = false;
             boolean unavailableOnce = false;
             boolean restartOnce = false;
-            for (int i = 0; i < 4000; ++i) {
+            for (int i = 0; i < 10000; ++i) {
                 try {
                     // Force a ReadTimeoutException to be performed once
                     if (!readTimeoutOnce) {
@@ -260,7 +264,8 @@ public class RetryPolicyTest extends AbstractPoliciesTest {
      */
     @Test(groups = "long")
     public void downgradingConsistencyRetryPolicy() throws Throwable {
-        Cluster.Builder builder = Cluster.builder().withRetryPolicy(DowngradingConsistencyRetryPolicy.INSTANCE);
+        Cluster.Builder builder = Cluster.builder().withLoadBalancingPolicy(new RoundRobinPolicy())
+                                                   .withRetryPolicy(DowngradingConsistencyRetryPolicy.INSTANCE);
         downgradingConsistencyRetryPolicy(builder);
     }
 
@@ -269,7 +274,8 @@ public class RetryPolicyTest extends AbstractPoliciesTest {
      */
     @Test(groups = "long")
     public void downgradingConsistencyLoggingPolicy() throws Throwable {
-        Cluster.Builder builder = Cluster.builder().withRetryPolicy(new LoggingRetryPolicy(DowngradingConsistencyRetryPolicy.INSTANCE));
+        Cluster.Builder builder = Cluster.builder().withLoadBalancingPolicy(new RoundRobinPolicy())
+                                                   .withRetryPolicy(new LoggingRetryPolicy(DowngradingConsistencyRetryPolicy.INSTANCE));
         downgradingConsistencyRetryPolicy(builder);
     }
 
@@ -291,7 +297,7 @@ public class RetryPolicyTest extends AbstractPoliciesTest {
             assertQueried(CCMBridge.IP_PREFIX + '3', 4);
 
             resetCoordinators();
-            c.cassandraCluster.forceStop(2);
+            c.cassandraCluster.stop(2);
             waitForDownWithWait(CCMBridge.IP_PREFIX + '2', c.cluster, 10);
 
             query(c, 12, ConsistencyLevel.ALL);
@@ -301,33 +307,41 @@ public class RetryPolicyTest extends AbstractPoliciesTest {
             assertQueried(CCMBridge.IP_PREFIX + '3', 6);
 
             resetCoordinators();
-            c.cassandraCluster.forceStop(1);
-            waitForDownWithWait(CCMBridge.IP_PREFIX + '1', c.cluster, 5);
+            c.cassandraCluster.stop(1);
+            waitForDownWithWait(CCMBridge.IP_PREFIX + '1', c.cluster, 10);
 
             try {
                 query(c, 12, ConsistencyLevel.ALL);
-                fail();
             } catch (ReadTimeoutException e) {
                 assertEquals("Cassandra timeout during read query at consistency TWO (2 responses were required but only 1 replica responded)", e.getMessage());
             }
 
             Thread.sleep(15000);
+            resetCoordinators();
 
             try {
                 query(c, 12, ConsistencyLevel.TWO);
-                fail("Only 1 node should be up and CL.TWO should fail.");
             } catch (Exception e) {
-                // TODO: Figure out exact exception that should be thrown
-                assertTrue(true);
+                fail("Only 1 node is up and CL.TWO should downgrade and pass.");
             }
+
+            assertQueried(CCMBridge.IP_PREFIX + '1', 0);
+            assertQueried(CCMBridge.IP_PREFIX + '2', 0);
+            assertQueried(CCMBridge.IP_PREFIX + '3', 12);
+
+            resetCoordinators();
 
             try {
                 query(c, 12, ConsistencyLevel.ALL);
-                fail("Only 1 node should be up and CL.ALL should fail.");
             } catch (Exception e) {
-                // TODO: Figure out exact exception that should be thrown
-                assertTrue(true);
+                fail("Only 1 node is up and CL.ALL should downgrade and pass.");
             }
+
+            assertQueried(CCMBridge.IP_PREFIX + '1', 0);
+            assertQueried(CCMBridge.IP_PREFIX + '2', 0);
+            assertQueried(CCMBridge.IP_PREFIX + '3', 12);
+
+            resetCoordinators();
 
             query(c, 12, ConsistencyLevel.QUORUM);
 
@@ -365,7 +379,8 @@ public class RetryPolicyTest extends AbstractPoliciesTest {
      */
     @Test(groups = "long")
     public void alwaysIgnoreRetryPolicyTest() throws Throwable {
-        Cluster.Builder builder = Cluster.builder().withRetryPolicy(new LoggingRetryPolicy(AlwaysIgnoreRetryPolicy.INSTANCE));
+        Cluster.Builder builder = Cluster.builder().withLoadBalancingPolicy(new RoundRobinPolicy())
+                                                   .withRetryPolicy(new LoggingRetryPolicy(AlwaysIgnoreRetryPolicy.INSTANCE));
         CCMBridge.CCMCluster c = CCMBridge.buildCluster(2, builder);
 
         try {
@@ -466,7 +481,8 @@ public class RetryPolicyTest extends AbstractPoliciesTest {
      */
     @Test(groups = "long")
     public void alwaysRetryRetryPolicyTest() throws Throwable {
-        Cluster.Builder builder = Cluster.builder().withRetryPolicy(new LoggingRetryPolicy(AlwaysRetryRetryPolicy.INSTANCE));
+        Cluster.Builder builder = Cluster.builder().withLoadBalancingPolicy(new RoundRobinPolicy())
+                                                   .withRetryPolicy(new LoggingRetryPolicy(AlwaysRetryRetryPolicy.INSTANCE));
         CCMBridge.CCMCluster c = CCMBridge.buildCluster(2, builder);
 
         try {

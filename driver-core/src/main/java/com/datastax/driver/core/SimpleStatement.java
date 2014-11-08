@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012 DataStax Inc.
+ *      Copyright (C) 2012-2014 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -85,6 +85,8 @@ public class SimpleStatement extends RegularStatement {
      * by {@link DataType#asJavaClass}.
      */
     public SimpleStatement(String query, Object... values) {
+        if (values.length > 65535)
+            throw new IllegalArgumentException("Too many values, the maximum allowed is 65535");
         this.query = query;
         this.values = convert(values);
     }

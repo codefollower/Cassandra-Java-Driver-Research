@@ -26,6 +26,8 @@ import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.SimpleStatement;
 
+//加vm参数
+//-agentpath:E:\jcdl\git\build\Release\jcdl.dll=trace=method,include=com/datastax/driver/*
 public class InsertTest extends TestBase {
     public static void main(String[] args) throws Exception {
         new InsertTest().start();
@@ -33,8 +35,13 @@ public class InsertTest extends TestBase {
 
     @Override
     public void startInternal() throws Exception {
+        cql = "CREATE KEYSPACE IF NOT EXISTS InsertTestKS WITH replication "
+                + "= {'class':'SimpleStrategy', 'replication_factor':3};";
         tableName = "InsertTest3";
-        //create();
+        
+        //execute(cql);
+        //execute("USE InsertTestKS");
+        create();
         //        for (int i = 1; i < 100; i++) {
         //            insert();
         //            Thread.sleep(1000);
@@ -61,8 +68,9 @@ public class InsertTest extends TestBase {
     }
 
     void insert() throws Exception {
+        int count = 4;
         int i = 9;
-        for(i=0;i<9;i++) {
+        for(i=0;i<count;i++) {
         cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (" + i + ", true, (text)'ab" + i + "')";
         SimpleStatement stmt = new SimpleStatement(cql);
         stmt.setConsistencyLevel(ConsistencyLevel.TWO);
