@@ -429,7 +429,6 @@ public class SimpleClient {
         //testSetCollectionType();
         // testListCollectionType();
         // testMapCollectionType();
-        
 
         close();
     }

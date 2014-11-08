@@ -37,7 +37,7 @@ public class DeleteTest extends TestBase {
         //create();
         //insert();
         delete();
-        
+
         //testDense();
     }
 
@@ -48,7 +48,7 @@ public class DeleteTest extends TestBase {
                 + " ( block_id int, f2 int, f3 int, " //
                 + "PRIMARY KEY (block_id, f2, f3)) WITH COMPACT STORAGE";
         //execute(cql);
-        
+
         cql = "INSERT INTO " + tableName + "(block_id, f2, f3) VALUES (1, 2, 3)";
         execute();
     }
@@ -88,7 +88,7 @@ public class DeleteTest extends TestBase {
         cql = "DELETE FROM " + tableName + " WHERE block_id=1 and f2=3 and f3=4";
         //where中必须指定PARTITION_KEY
         //cql = "DELETE FROM " + tableName + " WHERE f2=3 and f3=4";
-        
+
         //PARTITION_KEY和CLUSTERING_COLUMN不能出现在if子句中
         cql = "DELETE FROM " + tableName + " WHERE block_id=1 and f2=3 and f3=4 if f2=3 and f3=4";
         cql = "DELETE FROM " + tableName + " WHERE block_id=1 and f2=3 and f3=4 if short_hair=true and f1='abc'";

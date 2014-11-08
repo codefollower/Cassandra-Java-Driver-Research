@@ -23,6 +23,7 @@ import my.test.TestBase;
 
 public class IndexTest extends TestBase {
     String indexName;
+
     public static void main(String[] args) throws Exception {
         new IndexTest().start();
     }
@@ -103,26 +104,27 @@ public class IndexTest extends TestBase {
         //这样就允许了，因为pk字段只是PARTITION_KEY的一部分
         tryExecute("CREATE INDEX IF NOT EXISTS " + indexName + " ON " + tableName + " (pk)");
     }
+
     void test_CreateIndexStatement_announceMigration() throws Exception {
         tableName = "IndexTest8";
         indexName = tableName + "_myindex";
         //tryExecute("DROP TABLE IF EXISTS " + tableName);
         tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + " (pk int PRIMARY KEY, c text)");
         tryExecute("CREATE CUSTOM INDEX IF NOT EXISTS " + indexName + " ON " + tableName + " (c) USING 'my_index_class'");
-        
+
         tableName = "IndexTest9";
         indexName = tableName + "_myindex";
         //tryExecute("DROP TABLE IF EXISTS " + tableName);
         tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + " (pk int, c text, i int, b boolean, PRIMARY KEY(pk,c,i))");
         tryExecute("CREATE INDEX IF NOT EXISTS " + indexName + " ON " + tableName + " (c)");
-        
+
         tableName = "IndexTest10";
         indexName = tableName + "_myindex";
         //tryExecute("DROP TABLE IF EXISTS " + tableName);
         tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
                 + " (pk int,i int, c text, PRIMARY KEY(pk)) WITH COMPACT STORAGE");
         tryExecute("CREATE INDEX IF NOT EXISTS " + indexName + " ON " + tableName + " (c)");
-        
+
         tableName = "IndexTest11";
         //indexName = tableName + "_myindex";
         //tryExecute("DROP TABLE IF EXISTS " + tableName);

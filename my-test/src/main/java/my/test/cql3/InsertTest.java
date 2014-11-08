@@ -21,9 +21,9 @@ package my.test.cql3;
 
 import my.test.TestBase;
 
-import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.ConsistencyLevel;
-import com.datastax.driver.core.PreparedStatement;
+import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.Row;
 import com.datastax.driver.core.SimpleStatement;
 
 //加vm参数
@@ -35,23 +35,23 @@ public class InsertTest extends TestBase {
 
     @Override
     public void startInternal() throws Exception {
-        cql = "CREATE KEYSPACE IF NOT EXISTS InsertTestKS WITH replication "
-                + "= {'class':'SimpleStrategy', 'replication_factor':3};";
+
         tableName = "InsertTest3";
-        
-        //execute(cql);
-        //execute("USE InsertTestKS");
-        create();
-        //        for (int i = 1; i < 100; i++) {
-        //            insert();
-        //            Thread.sleep(1000);
-        //        }
-        
-        insert();
-        //select();
+        //createKeyspace();
+        //createTable();
+
+        //insert();
+        select();
     }
 
-    void create() throws Exception {
+    void createKeyspace() throws Exception {
+        cql = "CREATE KEYSPACE IF NOT EXISTS InsertTestKS WITH replication "
+                + "= {'class':'SimpleStrategy', 'replication_factor':3};";
+        execute(cql);
+        execute("USE InsertTestKS");
+    }
+
+    void createTable() throws Exception {
         cql = "CREATE TABLE IF NOT EXISTS " + tableName //
                 + " ( block_id int, counter_value counter, " //
                 + "PRIMARY KEY (block_id))";
@@ -67,29 +67,37 @@ public class InsertTest extends TestBase {
         execute(cql);
     }
 
+    void select() {
+        cql = "select * from " + tableName + " where block_id in (1,2,3)";
+        ResultSet rs = session.execute(cql);
+        //rs.all();
+        for (Row row : rs)
+            System.out.println(row);
+    }
+
     void insert() throws Exception {
         int count = 4;
         int i = 9;
-        for(i=0;i<count;i++) {
-        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (" + i + ", true, (text)'ab" + i + "')";
-        SimpleStatement stmt = new SimpleStatement(cql);
-        stmt.setConsistencyLevel(ConsistencyLevel.TWO);
-        stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);
-        execute(stmt);
+        for (i = 0; i < count; i++) {
+            cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (" + i + ", true, (text)'ab" + i + "')";
+            SimpleStatement stmt = new SimpleStatement(cql);
+            stmt.setConsistencyLevel(ConsistencyLevel.TWO);
+            stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);
+            execute(stmt);
         }
 
         //错误: Multiple definitions found for column f1
-//        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1, f1) VALUES (?, ?, ?, ?)";
-//
-//        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (?, ?, ?) USING TIMESTAMP ? AND TTL ?";
-//        PreparedStatement statement = session.prepare(cql);
-//        BoundStatement boundStatement = new BoundStatement(statement);
-//        //TIMESTAMP必须是long类型(所以要明确加L)，而TTL必须是int
-//        //否则出错: 
-//        //Invalid type for value 3 of CQL type bigint, 
-//        //expecting class java.lang.Long but class java.lang.Integer provided
-//        //session.execute(boundStatement.bind(1, true, "ab", 10000, 100));
-//        session.execute(boundStatement.bind(1, true, "ab", 10000L, 100));
+        //        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1, f1) VALUES (?, ?, ?, ?)";
+        //
+        //        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (?, ?, ?) USING TIMESTAMP ? AND TTL ?";
+        //        PreparedStatement statement = session.prepare(cql);
+        //        BoundStatement boundStatement = new BoundStatement(statement);
+        //        //TIMESTAMP必须是long类型(所以要明确加L)，而TTL必须是int
+        //        //否则出错: 
+        //        //Invalid type for value 3 of CQL type bigint, 
+        //        //expecting class java.lang.Long but class java.lang.Integer provided
+        //        //session.execute(boundStatement.bind(1, true, "ab", 10000, 100));
+        //        session.execute(boundStatement.bind(1, true, "ab", 10000L, 100));
 
         //                execute("drop table if EXISTS " + tableName + "2");
         //                cql = "CREATE TABLE IF NOT EXISTS " + tableName + "2" //

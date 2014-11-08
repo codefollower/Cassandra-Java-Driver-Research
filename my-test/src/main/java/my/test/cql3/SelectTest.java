@@ -77,7 +77,7 @@ public class SelectTest extends TestBase {
         cql = "SELECT * FROM users WHERE user_id = 'frodo' AND f1 in()";
         printResultSet();
     }
-    
+
     void test_getKeyBounds() throws Exception {
         cql = "SELECT * FROM users WHERE user_id = 'frodo' AND f1 = 11";
 
@@ -90,12 +90,12 @@ public class SelectTest extends TestBase {
         cql = "SELECT * FROM users WHERE user_id = 'frodo' AND f1 in(11, 12)";
 
         cql = "SELECT * FROM users WHERE token(user_id) >= 22 AND token(f1) = 11";
-        
+
         //不能这样用，得加索引字段
         cql = "SELECT * FROM users WHERE user_id = 'frodo'";
-        
+
         cql = "SELECT * FROM users WHERE user_id = 'frodo' AND age = 20 ALLOW FILTERING";
-        
+
         cql = "SELECT * FROM users WHERE user_id = 'frodo' AND f1 in(11, 12)";
         printResultSet();
     }

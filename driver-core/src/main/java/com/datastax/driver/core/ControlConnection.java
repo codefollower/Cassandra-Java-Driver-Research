@@ -326,6 +326,7 @@ class ControlConnection implements Host.StateListener {
 
         //4. 发送:
         //QUERY SELECT * FROM system.schema_keyspaces
+        //QUERY SELECT * FROM system.schema_usertypes
         //QUERY SELECT * FROM system.schema_columnfamilies
         //QUERY SELECT * FROM system.schema_columns
         DefaultResultSetFuture ksFuture = table == null
@@ -507,8 +508,8 @@ class ControlConnection implements Host.StateListener {
         // Make sure we're up to date on nodes and tokens
 
         //对应下面两条SQL
-        //peersFuture = SELECT peer, data_center, rack, tokens, rpc_address FROM system.peers
-        //localFuture = SELECT cluster_name, data_center, rack, tokens, partitioner FROM system.local WHERE key='local'
+        //peersFuture = SELECT * FROM system.local WHERE key='local' //SELECT peer, data_center, rack, tokens, rpc_address FROM system.peers
+        //localFuture = SELECT * FROM system.peers  //SELECT cluster_name, data_center, rack, tokens, partitioner FROM system.local WHERE key='local'
         DefaultResultSetFuture localFuture = new DefaultResultSetFuture(null, cluster.protocolVersion(), new Requests.Query(SELECT_LOCAL));
         DefaultResultSetFuture peersFuture = new DefaultResultSetFuture(null, cluster.protocolVersion(), new Requests.Query(SELECT_PEERS));
         connection.write(localFuture);

@@ -20,10 +20,11 @@ public abstract class TestBase {
     protected String cql;
     protected Cluster cluster;
     protected Session session;
-    protected String address = "127.0.0.2";
+    protected String address = "127.0.0.1";
 
     private void initDefaults() throws Exception {
         Cluster.Builder builder = Cluster.builder().addContactPoint(address);
+        //builder.addContactPoint("127.0.0.1");
         // builder.withClusterName("My Cassandra Cluster");
         SocketOptions so = new SocketOptions();
         // 设置一下这两个参数，避免在用eclipse进行debug代码时出现超时
@@ -39,9 +40,9 @@ public abstract class TestBase {
         builder.withPoolingOptions(po);
 
         QueryOptions queryOptions = new QueryOptions();
-        //queryOptions.setConsistencyLevel(ConsistencyLevel.TWO);
+        queryOptions.setConsistencyLevel(ConsistencyLevel.ONE);
 
-       // builder.withQueryOptions(queryOptions);
+        builder.withQueryOptions(queryOptions);
 
         builder.withCompression(Compression.SNAPPY);
         cluster = builder.build();
@@ -50,9 +51,9 @@ public abstract class TestBase {
         session = cluster.connect();
         session.execute("CREATE KEYSPACE IF NOT EXISTS " + KEYSPACE_NAME + " WITH replication "
                 + "= {'class':'SimpleStrategy', 'replication_factor':1};");
-        
-//        session.execute("CREATE KEYSPACE IF NOT EXISTS " + KEYSPACE_NAME + " WITH replication "
-//                + "= {'class':'NetworkTopologyStrategy', 'DC1':2, 'DC2':1};");
+
+        //        session.execute("CREATE KEYSPACE IF NOT EXISTS " + KEYSPACE_NAME + " WITH replication "
+        //                + "= {'class':'NetworkTopologyStrategy', 'DC1':2, 'DC2':1};");
         session.execute("USE " + KEYSPACE_NAME);
     }
 

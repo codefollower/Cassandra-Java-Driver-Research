@@ -33,22 +33,22 @@ public class KeyspaceTest extends TestBase {
         cql = "DROP SCHEMA IF EXISTS KeyspaceTest3";
         execute();
 
-//        //NetworkTopologyStrategy不能使用replication_factor
-//        cql = "CREATE KEYSPACE IF NOT EXISTS KeyspaceTest " + //
-//                "WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':3} AND DURABLE_WRITES = true";
-//        //tryExecute();
-//        
+        //        //NetworkTopologyStrategy不能使用replication_factor
+        //        cql = "CREATE KEYSPACE IF NOT EXISTS KeyspaceTest " + //
+        //                "WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':3} AND DURABLE_WRITES = true";
+        //        //tryExecute();
+        //        
         cql = "CREATE KEYSPACE IF NOT EXISTS KeyspaceTest3 " + //
                 "WITH replication = {'class':'SimpleStrategy', 'replication_factor':3} AND DURABLE_WRITES = true";
         execute();
-//
-//        //system是内部使用的KEYSPACE，不能与它相同
-//        cql = "CREATE KEYSPACE IF NOT EXISTS system " + //
-//                "WITH replication = {'class':'SimpleStrategy', 'replication_factor':3} AND DURABLE_WRITES = true";
-//        tryExecute();
-//
-//        cql = "ALTER KEYSPACE KeyspaceTest " + //
-//                "WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}";
-//        execute();
+        //
+        //        //system是内部使用的KEYSPACE，不能与它相同
+        //        cql = "CREATE KEYSPACE IF NOT EXISTS system " + //
+        //                "WITH replication = {'class':'SimpleStrategy', 'replication_factor':3} AND DURABLE_WRITES = true";
+        //        tryExecute();
+        //
+        //        cql = "ALTER KEYSPACE KeyspaceTest " + //
+        //                "WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}";
+        //        execute();
     }
 }
