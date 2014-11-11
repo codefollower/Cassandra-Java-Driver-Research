@@ -40,7 +40,7 @@ public class InsertTest extends TestBase {
         //createKeyspace();
         //createTable();
 
-        //insert();
+        insert();
         select();
     }
 
@@ -57,12 +57,12 @@ public class InsertTest extends TestBase {
                 + "PRIMARY KEY (block_id))";
         //execute(cql);
 
-        //execute("INSERT INTO " + tableName + "(block_id, counter_value) VALUES (1, 3)");
+        execute("DROP TABLE IF EXISTS " + tableName);
 
         //此时建立的索引是CompositesIndexOnRegular
         cql = "CREATE TABLE IF NOT EXISTS " + tableName //
-                + " ( block_id int, short_hair boolean, f1 text, " //
-                + "PRIMARY KEY (block_id, short_hair)) WITH compaction = { 'class' : 'LeveledCompactionStrategy'}";
+                + " ( block_id int, short_hair boolean, f0 text, f1 text, " //
+                + "PRIMARY KEY (block_id, short_hair, f0)) WITH compaction = { 'class' : 'LeveledCompactionStrategy'}";
 
         execute(cql);
     }
@@ -79,7 +79,8 @@ public class InsertTest extends TestBase {
         int count = 4;
         int i = 9;
         for (i = 0; i < count; i++) {
-            cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (" + i + ", true, (text)'ab" + i + "')";
+            cql = "INSERT INTO " + tableName + "(block_id, short_hair, f0, f1) " + //
+                    "VALUES (" + i + ", true, 'T" + i + "', (text)'ab" + i + "')";
             SimpleStatement stmt = new SimpleStatement(cql);
             stmt.setConsistencyLevel(ConsistencyLevel.TWO);
             stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);

@@ -48,6 +48,15 @@ public class BugCreateTableStatementTest extends TestBase {
                 + " ( block_id int, breed text, emails counter," //
                 + "PRIMARY KEY ((block_id, breed), emails)) WITH COMPACT STORAGE " //
                 + "AND CLUSTERING ORDER BY (emails DESC)");
+        
+        
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id int, breed text, emails counter," //
+                + "PRIMARY KEY ((block_id, breed), emails)) WITH CLUSTERING ORDER BY (emails DESC)");
+        
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( id int, c counter, f1 int, " //
+                + "PRIMARY KEY (id, c)) WITH CLUSTERING ORDER BY (c DESC)");
 
         execute("INSERT INTO " + tableName + "(block_id, breed, emails) VALUES (1, 'ab', 2)");
 

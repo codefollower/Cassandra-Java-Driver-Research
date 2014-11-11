@@ -24,6 +24,8 @@ import my.test.TestBase;
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.PreparedStatement;
+import com.datastax.driver.core.ResultSet;
+import com.datastax.driver.core.Row;
 import com.datastax.driver.core.SimpleStatement;
 
 public class DeleteTest extends TestBase {
@@ -37,6 +39,7 @@ public class DeleteTest extends TestBase {
         //create();
         //insert();
         delete();
+        select();
 
         //testDense();
     }
@@ -45,12 +48,20 @@ public class DeleteTest extends TestBase {
         tableName = "DeleteTest2";
 
         cql = "CREATE TABLE IF NOT EXISTS " + tableName //
-                + " ( block_id int, f2 int, f3 int, " //
+                + " ( block_id int, f2 int, f3 int, f_set set<int>, f_list list<int>, f_map map<int, int>, " //
                 + "PRIMARY KEY (block_id, f2, f3)) WITH COMPACT STORAGE";
         //execute(cql);
 
         cql = "INSERT INTO " + tableName + "(block_id, f2, f3) VALUES (1, 2, 3)";
         execute();
+    }
+    
+    void select() {
+        cql = "select * from " + tableName + " where block_id in (1,2,3)";
+        ResultSet rs = session.execute(cql);
+        //rs.all();
+        for (Row row : rs)
+            System.out.println(row);
     }
 
     void create() throws Exception {
@@ -58,25 +69,42 @@ public class DeleteTest extends TestBase {
 
         cql = "CREATE TABLE IF NOT EXISTS " + tableName //
                 + " ( block_id int, short_hair boolean, f1 text, f2 int, f3 int, " //
+                + "   f_set set<int>, f_list list<int>, f_map map<int, int>, " //
                 + "PRIMARY KEY (block_id, f2, f3))";
         execute(cql);
     }
 
     void insert() throws Exception {
-        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1, f2, f3) VALUES (1, true, 'abbc', 1, 2)";
-        SimpleStatement stmt = new SimpleStatement(cql);
-        stmt.setConsistencyLevel(ConsistencyLevel.ONE);
-        //stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);
-        execute(stmt);
-
-        cql = "INSERT INTO " + tableName
-                + "(block_id, short_hair, f1, f2, f3) VALUES (?, ?, ?, ?, ?) USING TIMESTAMP ? AND TTL ?";
-        PreparedStatement statement = session.prepare(cql);
-        BoundStatement boundStatement = new BoundStatement(statement);
-        session.execute(boundStatement.bind(1, true, "ab", 3, 4, 10000L, 100));
+        int count = 9;
+        for (int i = 0; i < count; i++) {
+            cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1, f2, f3, f_set, f_list, f_map) " + //
+                    "VALUES (" + i + ", true, 'abbc', 1, 2, {1, 2, 3}, [4,5,6], {1:10, 2:20, 3:30})";
+            SimpleStatement stmt = new SimpleStatement(cql);
+            stmt.setConsistencyLevel(ConsistencyLevel.ONE);
+            //stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);
+            execute(stmt);
+        }
+        //        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1, f2, f3) VALUES (1, true, 'abbc', 1, 2)";
+        //        SimpleStatement stmt = new SimpleStatement(cql);
+        //        stmt.setConsistencyLevel(ConsistencyLevel.ONE);
+        //        //stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);
+        //        execute(stmt);
+        //
+        //        cql = "INSERT INTO " + tableName
+        //                + "(block_id, short_hair, f1, f2, f3) VALUES (?, ?, ?, ?, ?) USING TIMESTAMP ? AND TTL ?";
+        //        PreparedStatement statement = session.prepare(cql);
+        //        BoundStatement boundStatement = new BoundStatement(statement);
+        //        session.execute(boundStatement.bind(1, true, "ab", 3, 4, 10000L, 100));
+    }
+    
+    void delete() throws Exception {
+        //execute("DELETE f1, f_list[0] FROM " + tableName + " WHERE block_id=2 AND f2=1 AND f3=2");
+        
+        //execute("DELETE FROM " + tableName + " WHERE block_id=2");
+        execute("DELETE FROM " + tableName + " WHERE block_id=1 AND f2=1 AND f3=2 IF EXISTS");
     }
 
-    void delete() throws Exception {
+    void delete2() throws Exception {
         //还不支持在where中使用or
         cql = "DELETE f1 FROM " + tableName + " WHERE block_id=1 or block_id=2";
         //where中只允许出现primary key

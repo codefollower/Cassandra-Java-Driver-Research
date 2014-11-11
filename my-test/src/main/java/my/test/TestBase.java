@@ -82,15 +82,15 @@ public abstract class TestBase {
 
     public abstract void startInternal() throws Exception;
 
-    public void execute() throws Exception {
+    public void execute() {
         execute(cql);
     }
 
-    public void execute(String cql) throws Exception {
+    public void execute(String cql) {
         session.execute(cql);
     }
 
-    public void execute(Statement statement) throws Exception {
+    public void execute(Statement statement) {
         session.execute(statement);
     }
 
@@ -106,12 +106,25 @@ public abstract class TestBase {
         }
     }
 
+    public void tryPrintResultSet() {
+        try {
+            printResultSet();
+        } catch (Exception e) {
+            System.out.println("***Exception***: " +e.getMessage());
+        }
+    }
+
     public void printResultSet() {
         ResultSet results = session.execute(cql);
         printResultSet(results);
     }
 
-    public void printResultSet(ResultSet results) {
+    public void printResultSet(ResultSet rs) {
+        for (Row row : rs)
+            System.out.println(row);
+    }
+
+    public void printResultSet2(ResultSet results) {
         ColumnDefinitions cd = results.getColumnDefinitions();
         int size = cd.size();
 

@@ -28,18 +28,18 @@ public class TableTest extends TestBase {
 
     @Override
     public void startInternal() throws Exception {
-        tableName = "TableTest3";
+        tableName = "TableTest4";
 
         //test_CQL3Type();
 
         //test_RawStatement_prepare();
         //
-        //        test_CFPropDefs_validate();
+
         //
-        //        test_CreateTableStatement_applyPropertiesTo();
+        test_CreateTableStatement_applyPropertiesTo();
 
         //test_getColumns();
-        test_AlterTableStatement();
+        //test_AlterTableStatement();
     }
 
     void test_AlterTableStatement() throws Exception {
@@ -214,19 +214,18 @@ public class TableTest extends TestBase {
         //tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + "_ddd ( block_id uuid)");
 
         //表名不能超过48个字符
-        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + "toolonglonglonglonglonglonglong ( block_id uuid)");
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + "toolonglonglonglonglonglonglonglonglonglonglong ( block_id uuid)");
 
         //定义了重复的字段
         tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + " ( block_id uuid, block_id uuid)");
 
-        //min_threshold属性不支持 (Unknown property 'min_threshold')
-        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + " ( block_id uuid ) WITH min_threshold=2");
+        //test_CFPropDefs_validate();
 
         //Create Table语句不能使用占位符
         //session.prepare("CREATE TABLE IF NOT EXISTS " + tableName + " ( block_id uuid ) WITH gc_grace_seconds=?");
 
         //每个表必须有主键
-        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + " ( block_id uuid, breed text, emails set<text>)");
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + " ( block_id uuid, breed text static, emails set<text>)");
 
         //定义了多个PRIMARY KEY
         tryExecute("CREATE TABLE IF NOT EXISTS " + tableName
@@ -241,8 +240,14 @@ public class TableTest extends TestBase {
         //主键字段不能是counter类型
         tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + " ( block_id counter PRIMARY KEY, breed text)");
 
+        //主键字段不能是Static的
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + " ( block_id uuid static PRIMARY KEY, breed text)");
+
         tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + " ( block_id counter PRIMARY KEY, breed text)"
                 + "WITH CLUSTERING ORDER BY (block_id DESC)");
+
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + " ( block_id uuid , breed counter, "
+                + " PRIMARY KEY(block_id, breed)) WITH CLUSTERING ORDER BY (breed DESC)");
 
         //没有clustering key、使用COMPACT STORAGE、且所有的字段都是partition key时是不允许的
         //错误是: No definition found that is not part of the PRIMARY KEY
@@ -259,6 +264,11 @@ public class TableTest extends TestBase {
         //这样就正常了，org.apache.cassandra.cql3.statements.CreateTableStatement.comparator默认使用UTF8Type
         tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
                 + " ( block_id uuid, breed text, short_hair boolean," //
+                + "PRIMARY KEY ((block_id, breed))) WITH COMPACT STORAGE");
+
+        //这样是允许的
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, breed text, short_hair boolean, f2 int, " //
                 + "PRIMARY KEY ((block_id, breed))) WITH COMPACT STORAGE");
 
         //测试if (columnAliases.isEmpty()) 且 useCompactStorage=false的场景
@@ -295,12 +305,28 @@ public class TableTest extends TestBase {
                 + " ( block_id uuid, breed text, short_hair boolean, f1 text," //
                 + "PRIMARY KEY ((block_id, breed), short_hair, f1)) WITH COMPACT STORAGE");
 
+        execute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, breed text, short_hair boolean, f1 text, f2 text," //
+                + "PRIMARY KEY ((block_id, breed), short_hair, f1))");
+
+        execute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, breed text, short_hair boolean, f1 text, f2 set<text>, f3 list<text>, " //
+                + "PRIMARY KEY ((block_id, breed), short_hair, f1))");
+
         //使用COMPACT STORAGE时，除了partition key和clustering key中的字段外，剩下的字段不能大于1个
         //错误是: 
         //COMPACT STORAGE with composite PRIMARY KEY allows no more than one column not part of the PRIMARY KEY (got: f2, f1)
         tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
                 + " ( block_id uuid, breed text, short_hair boolean, f1 text, f2 text," //
                 + "PRIMARY KEY ((block_id, breed), short_hair)) WITH COMPACT STORAGE");
+
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, breed text," //
+                + "PRIMARY KEY ((block_id, breed))) WITH COMPACT STORAGE");
+
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, breed text, f1 int, f2 text, " //
+                + "PRIMARY KEY ((block_id, breed))) WITH COMPACT STORAGE");
 
         //正常
         execute("CREATE TABLE IF NOT EXISTS " + tableName //
@@ -401,19 +427,32 @@ public class TableTest extends TestBase {
     }
 
     public void test_CFPropDefs_validate() throws Exception {
-        //合法的属性有这些:
-        //read_repair_chance, bloom_filter_fp_chance, index_interval, speculative_retry, 
-        //gc_grace_seconds, dclocal_read_repair_chance, compaction, memtable_flush_period_in_ms, 
-        //default_time_to_live, compression, comment, replicate_on_write, caching, populate_io_cache_on_flush
+        //min_threshold属性不支持 (Unknown property 'min_threshold')
+        //并且index_interval不再使用: Ignoring obsolete property index_interval
+        //有三个属性不再使用: index_interval, populate_io_cache_on_flush, replicate_on_write
+        //有效的属性包括下面这些:
+        //[read_repair_chance, bloom_filter_fp_chance, min_index_interval, speculative_retry, gc_grace_seconds, dclocal_read_repair_chance, compaction, 
+        //max_index_interval, memtable_flush_period_in_ms, default_time_to_live, comment, compression, caching]
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName + " ( block_id uuid ) WITH min_threshold=2 AND index_interval=1");
+
         cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
                 "WITH UnknownProperty = 1";
 
         tryExecute();
 
+        //以下是compaction相关
+        //============================================================
+
         //使用compaction时必须指定'class'子属性
         //否则出错: Missing sub-option 'class' for the 'compaction' option.
         cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
                 "WITH compaction = {'min_threshold' : 6 }";
+
+        tryExecute();
+
+        //不能使用WrappingCompactionStrategy
+        cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
+                "WITH compaction = { 'class' : 'WrappingCompactionStrategy', 'min_threshold' : 6 }";
 
         tryExecute();
 
@@ -424,8 +463,48 @@ public class TableTest extends TestBase {
 
         tryExecute();
 
+        //DateTieredCompactionStrategy的选项
         cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
-                "WITH compaction = { 'class' : 'SizeTieredCompactionStrategy', 'min_threshold' : 6 }";
+                "WITH compaction = { 'class' : 'DateTieredCompactionStrategy', " + //
+                //4个公共选项在AbstractCompactionStrategy中定义并由AbstractCompactionStrategy验证
+                "'tombstone_threshold' : 0.2, 'tombstone_compaction_interval' : 86400, " + //
+                "'unchecked_tombstone_compaction' : 'false', 'enabled' : 'true', " + //
+                //这两选项被忽略
+                "'min_threshold' : 6, 'max_threshold' : 16, " + //
+                //DateTieredCompactionStrategy专属选项
+                "'timestamp_resolution' : 'MICROSECONDS', 'max_sstable_age_days' : 365, 'base_time_seconds' : 3600, " + //
+                //未知选项
+                "'UnknownProperty' : 6 }";
+        tryExecute();
+
+        //SizeTieredCompactionStrategy的选项
+        cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
+                "WITH compaction = { 'class' : 'SizeTieredCompactionStrategy', " + //
+                //4个公共选项在AbstractCompactionStrategy中定义并由AbstractCompactionStrategy验证
+                "'tombstone_threshold' : 0.2, 'tombstone_compaction_interval' : 86400, " + //
+                "'unchecked_tombstone_compaction' : 'false', 'enabled' : 'true', " + //
+                //这两选项被忽略
+                "'min_threshold' : 6, 'max_threshold' : 16, " + //
+                //SizeTieredCompactionStrategy专属选项
+                "'min_sstable_size' : 52428800, 'bucket_low' : 0.5, 'bucket_high' : 1.5, 'cold_reads_to_omit' : 0.05, " + //
+                //未知选项
+                "'UnknownProperty' : 6 }";
+        tryExecute();
+
+        //LeveledCompactionStrategy的选项
+        cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
+                "WITH compaction = { 'class' : 'LeveledCompactionStrategy', " + //
+                //4个公共选项在AbstractCompactionStrategy中定义并由AbstractCompactionStrategy验证
+                "'tombstone_threshold' : 0.2, 'tombstone_compaction_interval' : 86400, " + //
+                "'unchecked_tombstone_compaction' : 'false', 'enabled' : 'true', " + //
+                //注意这两选项没有被忽略，不能出现
+                "'min_threshold' : 6, 'max_threshold' : 16, " + //
+                //SizeTieredCompactionStrategy专属选项，被忽略
+                "'min_sstable_size' : 52428800, 'bucket_low' : 0.5, 'bucket_high' : 1.5, 'cold_reads_to_omit' : 0.05, " + //
+                //LeveledCompactionStrategy专属选项
+                "'sstable_size_in_mb' : 1, " + //
+                //未知选项
+                "'UnknownProperty' : 6 }";
         tryExecute();
 
         cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
@@ -443,6 +522,16 @@ public class TableTest extends TestBase {
 
         cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
                 "WITH compaction = { 'class' : 'LeveledCompactionStrategy', 'min_threshold' : 1, 'max_threshold' : 5  }";
+        tryExecute();
+
+        //以下是compression相关
+        //============================================================
+
+        //sstable_compression选项必需出现
+        //否则出错: Missing sub-option 'sstable_compression' for the 'compression' option.
+        cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (block_id uuid PRIMARY KEY, species text)" + //
+                "WITH compression = " + //
+                "{ 'chunk_length_kb' : 64, 'crc_check_chance' : 1.5 }";
         tryExecute();
 
         //crc_check_chance的取值是闭区间[0.0, 1.0]
@@ -488,5 +577,21 @@ public class TableTest extends TestBase {
         execute("CREATE TABLE IF NOT EXISTS " + tableName //
                 + " ( block_id uuid, breed text, short_hair boolean, f1 text, f2 int, " //
                 + "PRIMARY KEY ((block_id, breed), short_hair, f1)) WITH COMPACT STORAGE");
+
+        execute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, breed text, short_hair boolean, f1 text, f2 int, f3 text, f4 int static, " //
+                + "PRIMARY KEY ((block_id, breed), short_hair, f1))");
+
+        execute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, breed text, short_hair boolean, f1 text, f2 int, f3 text, f4 int static, " //
+                + "PRIMARY KEY ((block_id, breed), short_hair, f1)) WITH caching={'keys' : 'ALL', 'rows_per_partition': 'all'}");
+        
+        tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, breed text, short_hair boolean, f1 text, f2 int, f3 text, f4 int static, " //
+                + "PRIMARY KEY ((block_id, breed), short_hair, f1)) WITH caching={'keys' : 'ALL', 'rows_per_partition': 'aaa'}");
+        
+        execute("CREATE TABLE IF NOT EXISTS " + tableName //
+                + " ( block_id uuid, breed text, short_hair boolean, f1 text, f2 int, f3 text, f4 int static, " //
+                + "PRIMARY KEY ((block_id, breed), short_hair, f1)) WITH caching={'rows_per_partition': 1000}");
     }
 }
