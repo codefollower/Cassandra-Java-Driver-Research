@@ -1,6 +1,4 @@
 /*
- * Copyright 2011 The Apache Software Foundation
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -22,7 +20,6 @@ package my.test.cql3;
 import my.test.TestBase;
 
 import com.datastax.driver.core.ResultSet;
-import com.datastax.driver.core.Row;
 import com.datastax.driver.core.SimpleStatement;
 
 public class SelectTest extends TestBase {
@@ -47,21 +44,85 @@ public class SelectTest extends TestBase {
         cql = "select age, f2 " + //
                 "from users where id=20 and f1=20";
         //tryPrintResultSet();
-        
+
         test_NamesQueryFilter();
     }
 
     void test_NamesQueryFilter() {
 
-//        execute("DROP TABLE IF EXISTS users2");
-//        execute("CREATE TABLE IF NOT EXISTS users2 " + //
-//                "(id int, f1 int, f2 int, age int, " + //
-//                "PRIMARY KEY (id, f1, f2)) WITH COMPACT STORAGE");
-//
-//        execute("insert into users2(id, f1, f2, age) values(1, 2, 3, 4)");
+        //        execute("DROP TABLE IF EXISTS users2");
+        //        execute("CREATE TABLE IF NOT EXISTS users2 " + //
+        //                "(id int, f1 int, f2 int, age int, " + //
+        //                "PRIMARY KEY (id, f1, f2)) WITH COMPACT STORAGE");
+        //
+        //        execute("insert into users2(id, f1, f2, age) values(1, 2, 3, 4)");
+        //
+        //        cql = "select * from users2 where id = 1 and f1 = 2 and f2 = 3";
+        //        tryPrintResultSet();
 
-        cql = "select * from users2 where id = 1 and f1 = 2 and f2 = 3";
-        tryPrintResultSet();
+        //        execute("DROP TABLE IF EXISTS users3");
+        //        execute("CREATE TABLE IF NOT EXISTS users3 " + //
+        //                "(id int, f1 int, f2 int, age int, " + //
+        //                "PRIMARY KEY (id)) WITH COMPACT STORAGE");
+        //
+        //        execute("insert into users3(id, f1, f2, age) values(1, 2, 3, 4)");
+
+        //        cql = "select * from users3 where id = 1 and f1 = 2 and f2 = 3";
+        //        //cql = "select * from users3 where id = 1 and f1 = 2 and f2 = 3 ALLOW FILTERING";
+        //        cql = "select f1, f2 from users3 where id = 1";
+        //        tryPrintResultSet();
+
+        //        execute("DROP TABLE IF EXISTS users4");
+        //        execute("CREATE TABLE IF NOT EXISTS users4 " + //
+        //                "(id int, f1 int, f2 int, age int, " + //
+        //                "PRIMARY KEY (id))");
+        //
+        execute("insert into users4(id, f1, f2, age) values(1, 2, 3, 4)");
+
+        //cql = "CREATE INDEX IF NOT EXISTS users4_f1 ON users4 (f1)";
+        //session.execute(cql);
+
+        //cql = "select * from users4 where id = 1 and f1 = 2 and f2 = 3";
+        //cql = "select * from users4 where id = 1 and f1 = 2 and f2 = 3 ALLOW FILTERING";
+        //cql = "select * from users4 where id = 1";
+        //
+        //cql = "select * from users4 where id = 1 and f1 = 2";
+        //        cql = "select * from users4 where id = 1 and f1 = 2 ALLOW FILTERING";
+        //cql = "select * from users4 where id = 1";
+        //tryPrintResultSet();
+
+        //        execute("DROP TABLE IF EXISTS users5");
+        //        execute("CREATE TABLE IF NOT EXISTS users5 " + //
+        //                "(id int, f1 int, f2 int, age int, " + //
+        //                "PRIMARY KEY (id, f1, f2)) WITH COMPACT STORAGE");
+        //
+        //        execute("insert into users5(id, f1, f2, age) values(1, 2, 3, 4)");
+
+        cql = "select * from users5 where id = 1 and f1 = 2";
+        cql = "select * from users5 where id = 1 and f1 = 2 and f2 = 3";
+        //        cql = "select * from users4 where id = 1 and f1 = 2 ALLOW FILTERING";
+        //cql = "select * from users4 where id = 1";
+        //tryPrintResultSet();
+
+        //        execute("DROP TABLE IF EXISTS users6");
+        //        execute("CREATE TABLE IF NOT EXISTS users6 " + //
+        //                "(id int, f1 int, f2 int, " + //
+        //                "PRIMARY KEY (id, f1)) WITH COMPACT STORAGE");
+        //
+        //execute("insert into users6(id, f1, f2) values(1, 2, 3)");
+
+        cql = "select * from users6 where id = 1"; //isColumnRange()返回true，因为缺少了f1
+        cql = "select * from users6 where id = 1 and f1 = 2"; //isColumnRange()返回false
+        //cql = "select * from users6 where id = 1 and f1 > 2"; //isColumnRange()返回true，因为f1用了范围查询
+        //tryPrintResultSet();
+
+        //        execute("DROP TABLE IF EXISTS users7");
+        //        execute("CREATE TABLE IF NOT EXISTS users7 " + //
+        //                "(id int, f1 int, f2 int, age int, " + //
+        //                "PRIMARY KEY (id, f1, f2))");
+
+        //execute("insert into users7(id, f1, f2, age) values(1, 2, 3, 4)");
+
     }
 
     void create() {

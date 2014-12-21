@@ -1,6 +1,4 @@
 /*
- * Copyright 2011 The Apache Software Foundation
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -585,11 +583,11 @@ public class TableTest extends TestBase {
         execute("CREATE TABLE IF NOT EXISTS " + tableName //
                 + " ( block_id uuid, breed text, short_hair boolean, f1 text, f2 int, f3 text, f4 int static, " //
                 + "PRIMARY KEY ((block_id, breed), short_hair, f1)) WITH caching={'keys' : 'ALL', 'rows_per_partition': 'all'}");
-        
+
         tryExecute("CREATE TABLE IF NOT EXISTS " + tableName //
                 + " ( block_id uuid, breed text, short_hair boolean, f1 text, f2 int, f3 text, f4 int static, " //
                 + "PRIMARY KEY ((block_id, breed), short_hair, f1)) WITH caching={'keys' : 'ALL', 'rows_per_partition': 'aaa'}");
-        
+
         execute("CREATE TABLE IF NOT EXISTS " + tableName //
                 + " ( block_id uuid, breed text, short_hair boolean, f1 text, f2 int, f3 text, f4 int static, " //
                 + "PRIMARY KEY ((block_id, breed), short_hair, f1)) WITH caching={'rows_per_partition': 1000}");

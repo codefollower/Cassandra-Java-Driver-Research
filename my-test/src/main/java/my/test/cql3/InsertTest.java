@@ -1,6 +1,4 @@
 /*
- * Copyright 2011 The Apache Software Foundation
- *
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -40,7 +38,7 @@ public class InsertTest extends TestBase {
         //createKeyspace();
         //createTable();
 
-        insert();
+        //insert();
         select();
     }
 
@@ -69,6 +67,7 @@ public class InsertTest extends TestBase {
 
     void select() {
         cql = "select * from " + tableName + " where block_id in (1,2,3)";
+        //cql = "select * from system.hints";
         ResultSet rs = session.execute(cql);
         //rs.all();
         for (Row row : rs)
