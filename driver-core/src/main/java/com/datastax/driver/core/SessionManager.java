@@ -28,6 +28,7 @@ import com.google.common.util.concurrent.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+
 import com.datastax.driver.core.exceptions.DriverInternalError;
 import com.datastax.driver.core.exceptions.UnsupportedFeatureException;
 import com.datastax.driver.core.policies.LoadBalancingPolicy;
@@ -269,7 +270,11 @@ class SessionManager extends AbstractSession {
 
             HostConnectionPool newPool = HostConnectionPool.newInstance(host, distance, SessionManager.this,
                                                                         cluster.getConfiguration().getProtocolOptions().getProtocolVersionEnum());
-            pools.put(host, newPool);
+            previous = pools.put(host, newPool);
+            if (previous != null && !previous.isClosed()) {
+                logger.warn("Replacing a pool that wasn't closed. Closing it now, but this was not expected.");
+                previous.closeAsync();
+            }
 
             // If we raced with a session shutdown, ensure that the pool will be closed.
             if (isClosing)
@@ -347,7 +352,7 @@ class SessionManager extends AbstractSession {
                 HostConnectionPool pool = pools.get(h);
 
                 if (pool == null) {
-                    if (dist != HostDistance.IGNORED && h.isUp())
+                    if (dist != HostDistance.IGNORED && h.state == Host.State.UP)
                         poolCreationFutures.add(maybeAddPool(h, executor));
                 } else if (dist != pool.hostDistance) {
                     if (dist == HostDistance.IGNORED) {
@@ -380,7 +385,7 @@ class SessionManager extends AbstractSession {
 
         try {
             if (pool == null) {
-                if (dist != HostDistance.IGNORED && h.isUp())
+                if (dist != HostDistance.IGNORED && h.state == Host.State.UP)
                     maybeAddPool(h, executor).get();
             } else if (dist != pool.hostDistance) {
                 if (dist == HostDistance.IGNORED) {
@@ -560,12 +565,6 @@ class SessionManager extends AbstractSession {
         DefaultResultSetFuture future = new DefaultResultSetFuture(this, configuration().getProtocolOptions().getProtocolVersionEnum(), msg);
         execute(future, statement);
         return future;
-    }
-
-    void trashIdleConnections(long now) {
-        for (HostConnectionPool pool : pools.values()) {
-            pool.trashIdleConnections(now);
-        }
     }
 
     private static class State implements Session.State {

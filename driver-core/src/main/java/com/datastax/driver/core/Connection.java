@@ -71,8 +71,6 @@ class Connection {
 
     private final AtomicReference<ConnectionCloseFuture> closeFuture = new AtomicReference<ConnectionCloseFuture>();
 
-    private final Object terminationLock = new Object();
-
     /**
      * Create a new connection to a Cassandra node.
      *
@@ -87,32 +85,49 @@ class Connection {
         this.dispatcher = new Dispatcher();
         this.name = name;
 
-        ClientBootstrap bootstrap = factory.newBootstrap();
-        ProtocolOptions protocolOptions = factory.configuration.getProtocolOptions();
-        ProtocolVersion protocolVersion = factory.protocolVersion == null ? ProtocolVersion.NEWEST_SUPPORTED : factory.protocolVersion;
-        bootstrap.setPipelineFactory(new PipelineFactory(this, protocolVersion, protocolOptions.getCompression().compressor, protocolOptions.getSSLOptions()));
-
-        ChannelFuture future = bootstrap.connect(address);
-
-        writer.incrementAndGet();
         try {
-            // Wait until the connection attempt succeeds or fails.
-            this.channel = future.awaitUninterruptibly().getChannel();
-            this.factory.allChannels.add(this.channel);
-            if (!future.isSuccess())
-            {
-                if (logger.isDebugEnabled())
-                    logger.debug(String.format("%s Error connecting to %s%s", this, address, extractMessage(future.getCause())));
-                throw defunct(new TransportException(address, "Cannot connect", future.getCause()));
-            }
-        } finally {
-            writer.decrementAndGet();
-        }
+            ClientBootstrap bootstrap = factory.newBootstrap();
+            ProtocolOptions protocolOptions = factory.configuration.getProtocolOptions();
+            ProtocolVersion protocolVersion = factory.protocolVersion == null ? ProtocolVersion.NEWEST_SUPPORTED : factory.protocolVersion;
+            bootstrap.setPipelineFactory(new PipelineFactory(this, protocolVersion, protocolOptions.getCompression().compressor, protocolOptions.getSSLOptions()));
 
-        logger.trace("{} Connection opened successfully", this);
-        initializeTransport(protocolVersion, factory.manager.metadata.clusterName);
-        logger.debug("{} Transport initialized and ready", this);
-        isInitialized = true;
+            ChannelFuture future = bootstrap.connect(address);
+
+            writer.incrementAndGet();
+            try {
+                // Wait until the connection attempt succeeds or fails.
+                this.channel = future.awaitUninterruptibly().getChannel();
+                this.factory.allChannels.add(this.channel);
+                if (!future.isSuccess()) {
+                    if (logger.isDebugEnabled())
+                        logger.debug(String.format("%s Error connecting to %s%s", this, address, extractMessage(future.getCause())));
+                    throw defunct(new TransportException(address, "Cannot connect", future.getCause()));
+                }
+            } finally {
+                writer.decrementAndGet();
+            }
+
+            logger.trace("{} Connection opened successfully", this);
+            initializeTransport(protocolVersion, factory.manager.metadata.clusterName);
+            logger.debug("{} Transport initialized and ready", this);
+            isInitialized = true;
+
+        } catch (ConnectionException e) {
+            closeAsync().force();
+            throw e;
+        } catch (ClusterNameMismatchException e) {
+            closeAsync().force();
+            throw e;
+        } catch (UnsupportedProtocolVersionException e) {
+            closeAsync().force();
+            throw e;
+        } catch (InterruptedException e) {
+            closeAsync().force();
+            throw e;
+        } catch (RuntimeException e) {
+            closeAsync().force();
+            throw e;
+        }
     }
 
     private static String extractMessage(Throwable t) {
@@ -267,15 +282,10 @@ class Connection {
         // sure the "suspected" mechanism work as expected
         Host host = factory.manager.metadata.getHost(address);
         if (host != null) {
-            // If we get an error on a host that was already DOWN or SUSPECTED, this is a reconnection attempt.
-            // We don't want to signal, because that would invoke triggerOnDown unnecessarily (the host's bad
-            // condition is already taken care of by the reattempt in progress)
-            boolean isReconnectionAttempt = (host.state == Host.State.DOWN || host.state == Host.State.SUSPECT)
-                                            && !(this instanceof PooledConnection);
-            if (!isReconnectionAttempt) {
-                boolean isDown = factory.manager.signalConnectionFailure(host, ce, host.wasJustAdded(), isInitialized);
-                notifyOwnerWhenDefunct(isDown);
-            }
+            // This will trigger onDown, including when the defunct Connection is part of a reconnection attempt, which is redundant.
+            // This is not too much of a problem since calling onDown on a node that is already down has no effect.
+            boolean isDown = factory.manager.signalConnectionFailure(host, ce, host.wasJustAdded(), isInitialized);
+            notifyOwnerWhenDefunct(isDown);
         }
 
         // Force the connection to close to make sure the future completes. Otherwise force() might never get called and
@@ -395,13 +405,24 @@ class Connection {
                     // twice (we will fail that method already)
                     dispatcher.removeHandler(handler.streamId, true);
 
-                    ConnectionException ce;
+                    final ConnectionException ce;
                     if (writeFuture.getCause() instanceof java.nio.channels.ClosedChannelException) {
                         ce = new TransportException(address, "Error writing: Closed channel");
                     } else {
                         ce = new TransportException(address, "Error writing", writeFuture.getCause());
                     }
-                    handler.callback.onException(Connection.this, defunct(ce), System.nanoTime() - handler.startTime, handler.retryCount);
+                    final long latency = System.nanoTime() - handler.startTime;
+                    // This handler is executed while holding the writeLock of the channel.
+                    // defunct might close the pool, which will close all of its connections; closing a connection also
+                    // requires its writeLock.
+                    // Therefore if multiple connections in the same pool get a write error, they could deadlock;
+                    // we run defunct on a separate thread to avoid that.
+                    factory.manager.executor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            handler.callback.onException(Connection.this, defunct(ce), latency, handler.retryCount);
+                        }
+                    });
                 } else {
                     logger.trace("{} request sent successfully", Connection.this);
                 }
@@ -422,7 +443,7 @@ class Connection {
      *
      * @return a future that will complete once the connection has terminated.
      *
-     * @see #terminate(boolean, boolean)
+     * @see #tryTerminate(boolean)
      */
     public CloseFuture closeAsync() {
 
@@ -434,16 +455,28 @@ class Connection {
 
         logger.debug("{} closing connection", this);
 
-        boolean terminated = terminate(false, false);
-        if (!terminated)
-            factory.reaper.register(this);
+        boolean terminated = tryTerminate(false);
+        if (!terminated) {
+            // The time by which all pending requests should have normally completed (use twice the read timeout for a generous
+            // estimate -- note that this does not cover the eventuality that read timeout is updated dynamically, but we can live
+            // with that).
+            long terminateTime = System.currentTimeMillis() + 2 * factory.getReadTimeoutMillis();
+            factory.reaper.register(this, terminateTime);
+        }
         return future;
     }
 
     /**
-     * @return whether the connection has actually terminated
+     * Tries to terminate a closed connection, i.e. release system resources.
+     *
+     * This is called both by "normal" code and by {@link Cluster.ConnectionReaper}.
+     *
+     * @param force whether to proceed if there are still outstanding requests.
+     * @return whether the connection has actually terminated.
+     *
+     * @see #closeAsync()
      */
-    boolean terminate(boolean evenIfPending, boolean logWarnings) {
+    boolean tryTerminate(boolean force) {
         assert isClosed();
         ConnectionCloseFuture future = closeFuture.get();
 
@@ -451,18 +484,14 @@ class Connection {
             logger.debug("{} has already terminated", this);
             return true;
         } else {
-            // This method is used both by normal code and by ConnectionReaper. Since the latter is a bug detection
-            // mechanism and logs warnings when it runs, we synchronize to avoid false warnings if they race.
-            synchronized (terminationLock) {
-                if (evenIfPending || dispatcher.pending.isEmpty()) {
-                    if (logWarnings)
-                        logger.warn("Forcing termination of {}. This should not happen and is likely a bug, please report.", this);
-                    future.force();
-                    return true;
-                } else {
-                    logger.debug("Not terminating {}: there are still pending requests", this);
-                    return false;
-                }
+            if (force || dispatcher.pending.isEmpty()) {
+                if (force)
+                    logger.warn("Forcing termination of {}. This should not happen and is likely a bug, please report.", this);
+                future.force();
+                return true;
+            } else {
+                logger.debug("Not terminating {}: there are still pending requests", this);
+                return false;
             }
         }
     }
@@ -633,7 +662,7 @@ class Connection {
                 streamIdHandler.release(streamId);
 
             if (isClosed())
-                terminate(false, false);
+                tryTerminate(false);
         }
 
         @Override
@@ -677,7 +706,7 @@ class Connection {
                 // If we happen to be closed and we're the last outstanding request, we need to terminate the connection
                 // (note: this is racy as the signaling can be called more than once, but that's not a problem)
                 if (isClosed())
-                    terminate(false, false);
+                    tryTerminate(false);
             }
         }
 
@@ -749,9 +778,11 @@ class Connection {
             ChannelFuture future = channel.close();
             future.addListener(new ChannelFutureListener() {
                 public void operationComplete(ChannelFuture future) {
-                    if (future.getCause() != null)
+                    factory.allChannels.remove(channel);
+                    if (future.getCause() != null) {
+                        logger.warn("Error closing channel", future.getCause());
                         ConnectionCloseFuture.this.setException(future.getCause());
-                    else
+                    } else
                         ConnectionCloseFuture.this.set(null);
                 }
             });

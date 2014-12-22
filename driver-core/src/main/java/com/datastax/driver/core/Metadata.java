@@ -52,7 +52,7 @@ public class Metadata {
     }
 
     // Synchronized to make it easy to detect dropped keyspaces
-    synchronized void rebuildSchema(String keyspace, String table, ResultSet ks, ResultSet udts, ResultSet cfs, ResultSet cols, VersionNumber cassandraVersion) {
+    synchronized void rebuildSchema(String keyspaceName, String tableName, String udtName, ResultSet ks, ResultSet udts, ResultSet cfs, ResultSet cols, VersionNumber cassandraVersion) {
         //keyspace到CF的映射
         Map<String, List<Row>> cfDefs = new HashMap<String, List<Row>>();
         Map<String, List<Row>> udtDefs = new HashMap<String, List<Row>>();
@@ -60,14 +60,16 @@ public class Metadata {
         Map<String, Map<String, Map<String, ColumnMetadata.Raw>>> colsDefs = new HashMap<String, Map<String, Map<String, ColumnMetadata.Raw>>>();
 
         // Gather cf defs
-        for (Row row : cfs) {
-            String ksName = row.getString(KeyspaceMetadata.KS_NAME);
-            List<Row> l = cfDefs.get(ksName);
-            if (l == null) {
-                l = new ArrayList<Row>();
-                cfDefs.put(ksName, l);
+        if (cfs != null) {
+            for (Row row : cfs) {
+                String ksName = row.getString(KeyspaceMetadata.KS_NAME);
+                List<Row> l = cfDefs.get(ksName);
+                if (l == null) {
+                    l = new ArrayList<Row>();
+                    cfDefs.put(ksName, l);
+                }
+                l.add(row);
             }
-            l.add(row);
         }
 
         // Gather udt defs
@@ -84,24 +86,26 @@ public class Metadata {
         }
 
         // Gather columns per Cf
-        for (Row row : cols) {
-            String ksName = row.getString(KeyspaceMetadata.KS_NAME);
-            String cfName = row.getString(TableMetadata.CF_NAME);
-            Map<String, Map<String, ColumnMetadata.Raw>> colsByCf = colsDefs.get(ksName);
-            if (colsByCf == null) {
-                colsByCf = new HashMap<String, Map<String, ColumnMetadata.Raw>>();
-                colsDefs.put(ksName, colsByCf);
+        if (cols != null) {
+            for (Row row : cols) {
+                String ksName = row.getString(KeyspaceMetadata.KS_NAME);
+                String cfName = row.getString(TableMetadata.CF_NAME);
+                Map<String, Map<String, ColumnMetadata.Raw>> colsByCf = colsDefs.get(ksName);
+                if (colsByCf == null) {
+                    colsByCf = new HashMap<String, Map<String, ColumnMetadata.Raw>>();
+                    colsDefs.put(ksName, colsByCf);
+                }
+                Map<String, ColumnMetadata.Raw> l = colsByCf.get(cfName);
+                if (l == null) {
+                    l = new HashMap<String, ColumnMetadata.Raw>();
+                    colsByCf.put(cfName, l);
+                }
+                ColumnMetadata.Raw c = ColumnMetadata.Raw.fromRow(row, cassandraVersion);
+                l.put(c.name, c);
             }
-            Map<String, ColumnMetadata.Raw> l = colsByCf.get(cfName);
-            if (l == null) {
-                l = new HashMap<String, ColumnMetadata.Raw>();
-                colsByCf.put(cfName, l);
-            }
-            ColumnMetadata.Raw c = ColumnMetadata.Raw.fromRow(row, cassandraVersion);
-            l.put(c.name, c);
         }
 
-        if (table == null) {
+        if (tableName == null && udtName == null) { // Refresh one or all keyspaces
             assert ks != null;
             Set<String> addedKs = new HashSet<String>();
             for (Row ksRow : ks) {
@@ -117,27 +121,39 @@ public class Metadata {
 
             // If keyspace is null, it means we're rebuilding from scratch, so
             // remove anything that was not just added as it means it's a dropped keyspace
-            if (keyspace == null) {
+            if (keyspaceName == null) {
                 Iterator<String> iter = keyspaces.keySet().iterator();
                 while (iter.hasNext()) {
                     if (!addedKs.contains(iter.next()))
                         iter.remove();
                 }
             }
-        } else {
-            assert keyspace != null;
-            KeyspaceMetadata ksm = keyspaces.get(keyspace);
+        } else if (tableName != null) {
+            assert keyspaceName != null;
+            KeyspaceMetadata ksm = keyspaces.get(keyspaceName);
 
             // If we update a keyspace we don't know about, something went
             // wrong. Log an error an schedule a full schema rebuilt.
             if (ksm == null) {
-                logger.error(String.format("Asked to rebuild table %s.%s but I don't know keyspace %s", keyspace, table, keyspace));
-                cluster.submitSchemaRefresh(null, null);
+                logger.error(String.format("Asked to rebuild table %s.%s but I don't know keyspace %s", keyspaceName, tableName, keyspaceName));
+                cluster.submitSchemaRefresh(null, null, null);
                 return;
             }
 
-            if (cfDefs.containsKey(keyspace))
-                buildTableMetadata(ksm, cfDefs.get(keyspace), colsDefs.get(keyspace), cassandraVersion);
+            if (cfDefs.containsKey(keyspaceName))
+                buildTableMetadata(ksm, cfDefs.get(keyspaceName), colsDefs.get(keyspaceName), cassandraVersion);
+        } else { // udtName != null
+            assert keyspaceName != null;
+            KeyspaceMetadata ksm = keyspaces.get(keyspaceName);
+
+            if (ksm == null) {
+                logger.error(String.format("Asked to rebuild type %s.%s but I don't know keyspace %s", keyspaceName, udtName, keyspaceName));
+                cluster.submitSchemaRefresh(null, null, null);
+                return;
+            }
+
+            if (udtDefs.containsKey(keyspaceName))
+                ksm.addUserTypes(udtDefs.get(keyspaceName));
         }
     }
 
@@ -314,6 +330,12 @@ public class Metadata {
      */
     public KeyspaceMetadata getKeyspace(String keyspace) {
         return keyspaces.get(handleId(keyspace));
+    }
+
+    void removeKeyspace(String keyspace) {
+        keyspaces.remove(keyspace);
+        if (tokenMap != null)
+            tokenMap.tokenToHosts.remove(keyspace);
     }
 
     /**

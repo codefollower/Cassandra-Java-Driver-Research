@@ -1,6 +1,32 @@
 CHANGELOG
 =========
 
+2.1.4:
+------
+
+Merged from 2.0 branch:
+
+- [improvement] Shade Netty dependency (JAVA-538)
+- [improvement] Target schema refreshes more precisely (JAVA-543)
+- [bug] Don't check rpc_address for control host (JAVA-546)
+- [improvement] Improve message of NoHostAvailableException (JAVA-409)
+- [bug] Rework connection reaper to avoid deadlock (JAVA-556)
+- [bug] Avoid deadlock when multiple connections to the same host get write
+  errors (JAVA-557)
+- [improvement] Make shuffle=true the default for TokenAwarePolicy (JAVA-504)
+- [bug] Fix bug when SUSPECT reconnection succeeds, but one of the pooled
+  connections fails while bringing the node back up (JAVA-577)
+- [bug] Prevent faulty control connection from ignoring reconnecting hosts
+  (JAVA-587)
+- temporarily revert "Add idle timeout to the connection pool" (JAVA-419)
+- [bug] Ensure updateCreatedPools does not add pools for suspected hosts
+  (JAVA-593)
+- [bug] Ensure state change notifications for a given host are handled serially
+  (JAVA-594)
+- [bug] Ensure control connection reconnects when control host is removed
+  (JAVA-597)
+
+
 2.1.3:
 ------
 
@@ -121,6 +147,30 @@ Merged from 2.0 branch: everything up to 2.0.3 (included), and the following.
 - [bug] Avoid classloader leak in Tomcat (JAVA-343)
 - [bug] Avoid deadlock in onAdd/onUp (JAVA-387)
 - [bug] Make metadata parsing more lenient (JAVA-377, JAVA-391)
+
+
+2.0.9:
+------
+
+- [improvement] Shade Netty dependency (JAVA-538)
+- [improvement] Target schema refreshes more precisely (JAVA-543)
+- [bug] Don't check rpc_address for control host (JAVA-546)
+- [improvement] Improve message of NoHostAvailableException (JAVA-409)
+- [bug] Rework connection reaper to avoid deadlock (JAVA-556)
+- [bug] Avoid deadlock when multiple connections to the same host get write
+  errors (JAVA-557)
+- [improvement] Make shuffle=true the default for TokenAwarePolicy (JAVA-504)
+- [bug] Fix bug when SUSPECT reconnection succeeds, but one of the pooled
+  connections fails while bringing the node back up (JAVA-577)
+- [bug] Prevent faulty control connection from ignoring reconnecting hosts
+  (JAVA-587)
+- temporarily revert "Add idle timeout to the connection pool" (JAVA-419)
+- [bug] Ensure updateCreatedPools does not add pools for suspected hosts
+  (JAVA-593)
+- [bug] Ensure state change notifications for a given host are handled serially
+  (JAVA-594)
+- [bug] Ensure control connection reconnects when control host is removed
+  (JAVA-597)
 
 
 2.0.8:
