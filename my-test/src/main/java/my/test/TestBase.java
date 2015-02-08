@@ -140,6 +140,14 @@ public abstract class TestBase {
         for (Row row : rs)
             System.out.println(row);
     }
+    
+    public void tryPrintResultSet(ResultSet rs) {
+        try {
+            printResultSet(rs);
+        } catch (Exception e) {
+            System.out.println("***Exception***: " +e.getMessage());
+        }
+    }
 
     public void printResultSet2(ResultSet results) {
         ColumnDefinitions cd = results.getColumnDefinitions();

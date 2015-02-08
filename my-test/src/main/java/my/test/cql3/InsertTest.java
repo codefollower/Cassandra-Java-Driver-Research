@@ -38,8 +38,8 @@ public class InsertTest extends TestBase {
         //createKeyspace();
         //createTable();
 
-        //insert();
-        select();
+        insert();
+        //select();
     }
 
     void createKeyspace() throws Exception {

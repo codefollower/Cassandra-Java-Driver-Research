@@ -17,10 +17,18 @@
  */
 package my.test.cql3;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import my.test.TestBase;
 
+import com.datastax.driver.core.BoundStatement;
+import com.datastax.driver.core.DataType;
+import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.SimpleStatement;
+import com.datastax.driver.core.TupleType;
+import com.datastax.driver.core.TupleValue;
 
 public class SelectTest extends TestBase {
     public static void main(String[] args) throws Exception {
@@ -32,8 +40,8 @@ public class SelectTest extends TestBase {
         //tableName = "SelectTest";
         //create();
         //insert();
-        //select();
-        test_execute();
+        select();
+        //test_execute();
         //test();
 
         //test_getSliceCommands();
@@ -141,14 +149,130 @@ public class SelectTest extends TestBase {
         cql = "CREATE INDEX IF NOT EXISTS users_first_name ON users (first_name)";
         session.execute(cql);
 
-        execute("CREATE FUNCTION IF NOT EXISTS my::sin ( input double ) " + //
+        //execute("CREATE FUNCTION IF NOT EXISTS my::sin ( input double ) " + //
+        //        "RETURNS double LANGUAGE java AS 'return Double.valueOf(Math.sin(input.doubleValue()));'");
+
+        execute("CREATE FUNCTION IF NOT EXISTS sin ( input double ) " + //
                 "RETURNS double LANGUAGE java AS 'return Double.valueOf(Math.sin(input.doubleValue()));'");
     }
 
+    void test_Restriction() {
+        cql = "select * from users WHERE f1=20 and f3<30 and f4<=40";
+        tryPrintResultSet();
+
+        cql = "select * from users WHERE f1=20 and f4<30 and f3<=40";
+        tryPrintResultSet();
+
+        cql = "select * from users WHERE f1=20 and f3=30 and f4<=40";
+        tryPrintResultSet();
+
+        cql = "select * from users WHERE id=20 and f3=30 and f4<=40";
+        tryPrintResultSet();
+
+        cql = "select * from users WHERE id=20 and f1=20 and f3=20 and f4<=40";
+        tryPrintResultSet();
+
+        cql = "select * from users WHERE id=20 and f1=20 and age=20 and f3=20 and f4<=40";
+        tryPrintResultSet();
+    }
+
+    void test_MultiColumnRelation() {
+        cql = "select age, f2, f3 from users where id=20 and f1=20 and (age, f3) >= ?";
+        cql = "select age, f2, f3 from users where (age, f3) >= ? ALLOW FILTERING";
+        PreparedStatement statement = session.prepare(cql);
+        BoundStatement boundStatement = new BoundStatement(statement);
+        TupleType tt = TupleType.of(DataType.cint(), DataType.cint());
+        TupleValue tv = tt.newValue(20, 20);
+        ResultSet rs = session.execute(boundStatement.bind(tv));
+        tryPrintResultSet(rs);
+
+        cql = "select age, f2, f3 from users where id=20 and f1=20 and (age, f3) in ?";
+        statement = session.prepare(cql);
+        boundStatement = new BoundStatement(statement);
+
+        tt = TupleType.of(DataType.cint(), DataType.cint());
+        //DataType dt = DataType.list(tt);
+        tv = tt.newValue(20, 20);
+        List<TupleValue> list = new ArrayList<TupleValue>(2);
+        list.add(tv);
+        list.add(tt.newValue(21, 21));
+        rs = session.execute(boundStatement.bind(list));
+        tryPrintResultSet(rs);
+
+        cql = "select age, f2, f3 from users where id=20 and f1=20 and (age, f3) >= (20, 20)";
+        cql = "select age, f2, f3 from users";
+        tryPrintResultSet();
+
+        cql = "select age, f2, f3 from users where id=20 and f1=20 and (age, f3) in ((20, 20), (21, 21))";
+        tryPrintResultSet();
+
+        //Multi-column relations can only be applied to clustering columns: 
+        cql = "select age, f2 " + //
+                "from users where id=20 and f1=20 and (f1, age) in ((20, 20), (21, 21))";
+        tryPrintResultSet();
+
+        //Column "age" appeared twice in a relation: (age, age) IN ((20, 20), (21, 21))
+        cql = "select age, f2 " + //
+                "from users where id=20 and f1=20 and (age, age) in ((20, 20), (21, 21))";
+        tryPrintResultSet();
+
+        //Clustering columns may not be skipped in multi-column relations. They should appear in the PRIMARY KEY order. Got (f3, age) IN ((20, 20), (21, 21))
+        //必需按PRIMARY KEY ((id,f1),age, f3))
+        cql = "select age, f2 " + //
+                "from users where id=20 and f1=20 and (f3, age) in ((20, 20), (21, 21))";
+        tryPrintResultSet();
+
+        //Clustering columns must appear in the PRIMARY KEY order in multi-column relations: (age, f4) IN ((20, 20), (21, 21))
+        //少了f3
+        cql = "select age, f2 " + //
+                "from users where id=20 and f1=20 and (age, f4) in ((20, 20), (21, 21))";
+        tryPrintResultSet();
+
+        //Column "age" cannot be restricted by more than one relation if it is in an IN relation
+        //前面又有一个age = 20
+        cql = "select age, f2 " + //
+                "from users where id=20 and f1=20 and age = 20 and (age, f3) in ((20, 20), (21, 21))";
+        tryPrintResultSet();
+
+        //Column "age" cannot be restricted by more than one relation if it is in an = relation
+        //前面又有一个age in (20, 21)
+        cql = "select age, f2 " + //
+                "from users where id=20 and f1=20 and age in (20, 21) and(age, f3) = (20, 20)";
+        tryPrintResultSet();
+
+        //Column "age" cannot be restricted by an equality relation and an inequality relation
+        //后面是一个>，前面是一个=，这样是不允许的
+        cql = "select age, f2 " + //
+                "from users where id=20 and f1=20 and age = 20 and(age, f3) > (20, 20)";
+        tryPrintResultSet();
+
+        cql = "select age, f2 " + //
+                "from users where id=20 and f1=20 and (age, f3) in ((20, 20), (21, 21))";
+        printResultSet();
+
+        cql = "select age, f2 " + //
+                "from users where id=20 and f1=20 and (age, f3) > (20, 20)";
+        printResultSet();
+    }
+
     void select() {
+        //test_Restriction();
+        test_MultiColumnRelation();
+        //select1();
+    }
+
+    void select1() {
+        //Only EQ and IN relation are supported on the partition key (unless you use the token() function)
+        cql = "select * " + //
+                "from users where id>=20 and f1=20";
+        tryPrintResultSet();
+
         cql = "select * " + //
                 "from users where id=20 and f1=20";
         printResultSet();
+
+        cql = "select * from users WHERE token(id,f1) > 10";
+        tryPrintResultSet();
 
         cql = "select age, f2 " + //
                 "from users where id=20 and f1=20";
