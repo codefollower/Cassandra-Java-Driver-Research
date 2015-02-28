@@ -75,7 +75,7 @@ public class Cluster implements Closeable {
 
     private static final int DEFAULT_THREAD_KEEP_ALIVE = 30;
 
-    private static final int NOTIF_LOCK_TIMEOUT_SECONDS = 60;
+    private static final int NOTIF_LOCK_TIMEOUT_SECONDS = SystemProperties.getInt("com.datastax.driver.NOTIF_LOCK_TIMEOUT_SECONDS", 60);
 
     final Manager manager;
 
@@ -1353,6 +1353,10 @@ public class Cluster implements Closeable {
             LoadBalancingPolicy loadBalancingPolicy = loadBalancingPolicy();
             if (loadBalancingPolicy instanceof CloseableLoadBalancingPolicy)
                 ((CloseableLoadBalancingPolicy)loadBalancingPolicy).close();
+
+            AddressTranslater translater = configuration.getPolicies().getAddressTranslater();
+            if (translater instanceof CloseableAddressTranslater)
+                ((CloseableAddressTranslater)translater).close();
 
             // Then we shutdown all connections
             List<CloseFuture> futures = new ArrayList<CloseFuture>(sessions.size() + 1);
