@@ -1,13 +1,11 @@
 package com.datastax.driver.core;
 
-import java.math.BigInteger;
 import java.util.List;
 
+import com.google.common.collect.ImmutableList;
 import org.testng.annotations.Test;
 
 import static org.testng.Assert.fail;
-
-import com.datastax.driver.core.Token.M3PToken;
 
 import static com.datastax.driver.core.Assertions.assertThat;
 
@@ -77,6 +75,40 @@ public class TokenRangeTest {
     }
 
     @Test(groups = "unit")
+    public void should_compute_intersection() {
+        assertThat(tokenRange(3, 9).intersectWith(tokenRange(2, 4)))
+            .isEqualTo(ImmutableList.of(tokenRange(3, 4)));
+        assertThat(tokenRange(3, 9).intersectWith(tokenRange(3, 5)))
+            .isEqualTo(ImmutableList.of(tokenRange(3, 5)));
+        assertThat(tokenRange(3, 9).intersectWith(tokenRange(4, 6)))
+            .isEqualTo(ImmutableList.of(tokenRange(4, 6)));
+        assertThat(tokenRange(3, 9).intersectWith(tokenRange(7, 9)))
+            .isEqualTo(ImmutableList.of(tokenRange(7, 9)));
+        assertThat(tokenRange(3, 9).intersectWith(tokenRange(8, 10)))
+            .isEqualTo(ImmutableList.of(tokenRange(8, 9)));
+    }
+
+    @Test(groups = "unit")
+    public void should_compute_intersection_with_ranges_around_ring() {
+        // If a range wraps the ring like 10, -10 does this will produce two separate
+        // intersected ranges.
+        assertThat(tokenRange(10, -10).intersectWith(tokenRange(-20, 20)))
+            .isEqualTo(ImmutableList.of(tokenRange(10, 20), tokenRange(-20, -10)));
+        assertThat(tokenRange(-20, 20).intersectWith(tokenRange(10, -10)))
+            .isEqualTo(ImmutableList.of(tokenRange(10, 20), tokenRange(-20, -10)));
+
+        // If both ranges wrap the ring, they should be merged together wrapping across
+        // the range.
+        assertThat(tokenRange(10, -30).intersectWith(tokenRange(20, -20)))
+            .isEqualTo(ImmutableList.of(tokenRange(20, -30)));
+    }
+
+    @Test(groups = "unit", expectedExceptions = IllegalArgumentException.class)
+    public void should_fail_to_compute_intersection_when_ranges_dont_intersect() {
+        tokenRange(1, 2).intersectWith(tokenRange(2, 3));
+    }
+
+    @Test(groups = "unit")
     public void should_merge_with_other_range() {
         assertThat(tokenRange(3, 9).mergeWith(tokenRange(2, 3))).isEqualTo(tokenRange(2, 9));
         assertThat(tokenRange(3, 9).mergeWith(tokenRange(2, 4))).isEqualTo(tokenRange(2, 9));
@@ -128,22 +160,22 @@ public class TokenRangeTest {
 
     @Test(groups = "unit", expectedExceptions = IllegalArgumentException.class)
     public void should_not_merge_with_nonadjacent_and_disjoint_ranges() {
-        tokenRange(0,5).mergeWith(tokenRange(7,14));
+        tokenRange(0, 5).mergeWith(tokenRange(7, 14));
     }
 
     @Test(groups = "unit")
     public void should_return_non_empty_range_if_other_range_is_empty() {
-        assertThat(tokenRange(1,5).mergeWith(tokenRange(5,5))).isEqualTo(tokenRange(1,5));
+        assertThat(tokenRange(1, 5).mergeWith(tokenRange(5, 5))).isEqualTo(tokenRange(1, 5));
     }
 
     @Test(groups = "unit")
     public void should_unwrap_to_non_wrapping_ranges() {
         assertThat(tokenRange(9, 3)).unwrapsTo(tokenRange(9, minToken), tokenRange(minToken, 3));
-        assertThat(tokenRange(3, 9)).unwrapsToItself();
-        assertThat(tokenRange(3, minToken)).unwrapsToItself();
-        assertThat(tokenRange(minToken, 3)).unwrapsToItself();
-        assertThat(tokenRange(3, 3)).unwrapsToItself();
-        assertThat(tokenRange(minToken, minToken)).unwrapsToItself();
+        assertThat(tokenRange(3, 9)).isNotWrappedAround();
+        assertThat(tokenRange(3, minToken)).isNotWrappedAround();
+        assertThat(tokenRange(minToken, 3)).isNotWrappedAround();
+        assertThat(tokenRange(3, 3)).isNotWrappedAround();
+        assertThat(tokenRange(minToken, minToken)).isNotWrappedAround();
     }
 
     @Test(groups = "unit")
@@ -155,14 +187,13 @@ public class TokenRangeTest {
         assertThat(splits).containsExactly(tokenRange(3, 5), tokenRange(5, 7), tokenRange(7, 9));
     }
 
-
     @Test(groups = "unit")
     public void should_throw_error_with_less_than_1_splits() {
-        for(int i = -255; i < 1; i++) {
+        for (int i = -255; i < 1; i++) {
             try {
                 tokenRange(0, 1).splitEvenly(i);
                 fail("Expected error when providing " + i + " splits.");
-            } catch(IllegalArgumentException e) {
+            } catch (IllegalArgumentException e) {
                 // expected.
             }
         }
@@ -175,15 +206,15 @@ public class TokenRangeTest {
 
     @Test(groups = "unit")
     public void should_create_empty_token_ranges_if_too_many_splits() {
-        TokenRange range = tokenRange(0,10);
+        TokenRange range = tokenRange(0, 10);
 
         List<TokenRange> ranges = range.splitEvenly(255);
         assertThat(ranges).hasSize(255);
 
-        for(int i = 0; i < ranges.size(); i++) {
+        for (int i = 0; i < ranges.size(); i++) {
             TokenRange tr = ranges.get(i);
-            if(i < 10) {
-                assertThat(tr).isEqualTo(tokenRange(i, i+1));
+            if (i < 10) {
+                assertThat(tr).isEqualTo(tokenRange(i, i + 1));
             } else {
                 assertThat(tr.isEmpty());
             }

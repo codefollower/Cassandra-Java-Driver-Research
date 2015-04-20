@@ -22,10 +22,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.regex.Pattern;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Maps;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.datastax.driver.core.exceptions.DriverInternalError;
 
 /**
  * Keeps metadata on the connected cluster, including known nodes and schema definitions.
@@ -396,6 +399,14 @@ public class Metadata {
         return keyspaces.get(handleId(keyspace));
     }
 
+    /**
+     * Used when the keyspace name is unquoted and in the exact case we store it in
+     * (typically when we got it from an internal call, not from the user).
+     */
+    KeyspaceMetadata getKeyspaceInternal(String keyspace) {
+        return keyspaces.get(keyspace);
+    }
+
     void removeKeyspace(String keyspace) {
         keyspaces.remove(keyspace);
         if (tokenMap != null)
@@ -431,6 +442,36 @@ public class Metadata {
             sb.append(ksm.exportAsString()).append('\n');
 
         return sb.toString();
+    }
+
+    /**
+     * Builds a new {@link Token} from its string representation, according to the partitioner
+     * reported by the Cassandra nodes.
+     *
+     * @param tokenStr the string representation.
+     * @return the token.
+     */
+    public Token newToken(String tokenStr) {
+        TokenMap current = tokenMap;
+        if (current == null)
+            throw new DriverInternalError("Token factory not set. This should only happen at initialization time");
+
+        return current.factory.fromString(tokenStr);
+    }
+
+    /**
+     * Builds a new {@link TokenRange}.
+     *
+     * @param start the start token.
+     * @param end the end token.
+     * @return the range.
+     */
+    public TokenRange newTokenRange(Token start, Token end) {
+        TokenMap current = tokenMap;
+        if (current == null)
+            throw new DriverInternalError("Token factory not set. This should only happen at initialization time");
+
+        return new TokenRange(start, end, current.factory);
     }
 
     Token.Factory tokenFactory() {
@@ -504,7 +545,16 @@ public class Metadata {
 
                 tokenToHosts.put(keyspace.getName(), ksTokens);
 
-                Map<Host, Set<TokenRange>> ksRanges = computeHostsToRangesMap(tokenRanges, ksTokens, hosts.size());
+                Map<Host, Set<TokenRange>> ksRanges;
+                if (ring.size() == 1) {
+                    // We forced the single range to ]minToken,minToken], make sure to use that instead of relying on the host's token
+                    ImmutableMap.Builder<Host, Set<TokenRange>> builder = ImmutableMap.builder();
+                    for (Host host : allTokens.keySet())
+                        builder.put(host, tokenRanges);
+                    ksRanges = builder.build();
+                } else {
+                    ksRanges = computeHostsToRangesMap(tokenRanges, ksTokens, hosts.size());
+                }
                 hostsToRanges.put(keyspace.getName(), ksRanges);
             }
             return new TokenMap(factory, primaryToTokens, tokenToHosts, hostsToRanges, ring, tokenRanges, hosts);
@@ -541,10 +591,15 @@ public class Metadata {
 
         private static Set<TokenRange> makeTokenRanges(List<Token> ring, Token.Factory factory) {
             ImmutableSet.Builder<TokenRange> builder = ImmutableSet.builder();
-            for (int i = 0; i < ring.size(); i++) {
-                Token start = ring.get(i);
-                Token end = ring.get((i + 1) % ring.size());
-                builder.add(new TokenRange(start, end, factory));
+            // JAVA-684: if there is only one token, return the range ]minToken, minToken]
+            if(ring.size() == 1) {
+                builder.add(new TokenRange(factory.minToken(), factory.minToken(), factory));                
+            } else {
+                for (int i = 0; i < ring.size(); i++) {
+                    Token start = ring.get(i);
+                    Token end = ring.get((i + 1) % ring.size());
+                    builder.add(new TokenRange(start, end, factory));
+                }
             }
             return builder.build();
         }

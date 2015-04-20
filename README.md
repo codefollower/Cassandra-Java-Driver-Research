@@ -1,32 +1,32 @@
 Cassandra-Java-Driver-Research
 ==================
 
-Cassandra-Java-Driveræºä»£ç å­¦ä¹ ç ”ç©¶(åŒ…æ‹¬ä»£ç æ³¨é‡Šã€æ–‡æ¡£ã€ç”¨äºä»£ç åˆ†æçš„æµ‹è¯•ç”¨ä¾‹)
+Cassandra-Java-DriverÔ´´úÂëÑ§Ï°ÑĞ¾¿(°üÀ¨´úÂë×¢ÊÍ¡¢ÎÄµµ¡¢ÓÃÓÚ´úÂë·ÖÎöµÄ²âÊÔÓÃÀı)
 
 
-## ä½¿ç”¨çš„Cassandra-Java-Driverç‰ˆæœ¬
+## Ê¹ÓÃµÄCassandra-Java-Driver°æ±¾
 
-ä¿æŒä¸å®˜æ–¹çš„[trunk](https://github.com/datastax/java-driver.git)ç‰ˆæœ¬åŒæ­¥
-
-
-## æ„å»ºä¸è¿è¡Œç¯å¢ƒ
-
-éœ€è¦JDK7ä»¥åŠ[Apache Maven](http://maven.apache.org/)
+±£³ÖÓë¹Ù·½µÄ[trunk](https://github.com/datastax/java-driver.git)°æ±¾Í¬²½
 
 
-## å®‰è£…
+## ¹¹½¨ÓëÔËĞĞ»·¾³
+
+ĞèÒªJDK7ÒÔ¼°[Apache Maven](http://maven.apache.org/)
+
+
+## °²×°
 
 mvn install -Dmaven.test.skip=true
 
 
-## ç”ŸæˆEclipseå·¥ç¨‹
+## Éú³ÉEclipse¹¤³Ì
 
 mvn eclipse:eclipse <br><br>
 
-åœ¨eclipseä¸­å¯¼å…¥ <br>
+ÔÚeclipseÖĞµ¼Èë <br>
 File->Import->General->Existing Projects into Workspace
 
 
-## è¿è¡Œæµ‹è¯•ä¾‹å­
+## ÔËĞĞ²âÊÔÀı×Ó
 
-åœ¨eclipseä¸­å¯ä»¥ç›´æ¥è¿è¡Œmy.teståŒ…ä¸­çš„ä¾‹å­
+ÔÚeclipseÖĞ¿ÉÒÔÖ±½ÓÔËĞĞmy.test°üÖĞµÄÀı×Ó

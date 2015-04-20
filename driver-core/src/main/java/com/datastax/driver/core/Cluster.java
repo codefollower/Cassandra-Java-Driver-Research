@@ -1123,12 +1123,12 @@ public class Cluster implements Closeable {
         return "cluster" + CLUSTER_ID.incrementAndGet();
     }
 
-    private static ListeningExecutorService makeExecutor(int threads, String name) {
+    private static ListeningExecutorService makeExecutor(int threads, String name, LinkedBlockingQueue<Runnable> workQueue) {
         ThreadPoolExecutor executor = new ThreadPoolExecutor(threads,
                                                              threads,
                                                              DEFAULT_THREAD_KEEP_ALIVE,
                                                              TimeUnit.SECONDS,
-                                                             new LinkedBlockingQueue<Runnable>(),
+                                                             workQueue,
                                                              threadFactory(name));
 
         executor.allowCoreThreadTimeOut(true);
@@ -1161,16 +1161,22 @@ public class Cluster implements Closeable {
 
         final ConvictionPolicy.Factory convictionPolicyFactory = new ConvictionPolicy.Simple.Factory();
 
-        final ScheduledExecutorService reconnectionExecutor = Executors.newScheduledThreadPool(2, threadFactory("Reconnection-%d"));
+        final ScheduledThreadPoolExecutor reconnectionExecutor = new ScheduledThreadPoolExecutor(2, threadFactory("Reconnection-%d"));
         // scheduledTasksExecutor is used to process C* notifications. So having it mono-threaded ensures notifications are
         // applied in the order received.
-        final ScheduledExecutorService scheduledTasksExecutor = Executors.newScheduledThreadPool(1, threadFactory("Scheduled Tasks-%d"));
+        final ScheduledThreadPoolExecutor scheduledTasksExecutor = new ScheduledThreadPoolExecutor(1, threadFactory("Scheduled Tasks-%d"));
 
         // Executor used for tasks that shouldn't be executed on an IO thread. Used for short-lived, generally non-blocking tasks
         final ListeningExecutorService executor;
 
+        // Work Queue used by executor.
+        final LinkedBlockingQueue<Runnable> executorQueue = new LinkedBlockingQueue<Runnable>();
+
         // An executor for tasks that might block some time, like creating new connection, but are generally not too critical.
         final ListeningExecutorService blockingExecutor;
+
+        // Work Queue used by blockingExecutor.
+        final LinkedBlockingQueue<Runnable> blockingExecutorQueue = new LinkedBlockingQueue<Runnable>();
 
         final ConnectionReaper reaper;
 
@@ -1192,8 +1198,8 @@ public class Cluster implements Closeable {
             this.configuration = configuration;
             this.configuration.register(this);
 
-            this.executor = makeExecutor(NON_BLOCKING_EXECUTOR_SIZE, "Cassandra Java Driver worker-%d");
-            this.blockingExecutor = makeExecutor(2, "Cassandra Java Driver blocking tasks worker-%d");
+            this.executor = makeExecutor(NON_BLOCKING_EXECUTOR_SIZE, "Cassandra Java Driver worker-%d", executorQueue);
+            this.blockingExecutor = makeExecutor(2, "Cassandra Java Driver blocking tasks worker-%d", blockingExecutorQueue);
 
             this.reaper = new ConnectionReaper();
 
@@ -1389,8 +1395,8 @@ public class Cluster implements Closeable {
 
         void logClusterNameMismatch(Host host, String expectedClusterName, String actualClusterName) {
             logger.warn("Detected added or restarted Cassandra host {} but ignoring it since its cluster name '{}' does not match the one "
-                        + "currently known ({})",
-                        host, actualClusterName, expectedClusterName);
+                    + "currently known ({})",
+                host, actualClusterName, expectedClusterName);
         }
 
         public ListenableFuture<?> triggerOnUp(final Host host) {
@@ -1507,15 +1513,15 @@ public class Cluster implements Closeable {
             }
         }
 
-        public ListenableFuture<?> triggerOnDown(final Host host) {
-            return triggerOnDown(host, false);
+        public ListenableFuture<?> triggerOnDown(final Host host, boolean startReconnection) {
+            return triggerOnDown(host, false, startReconnection);
         }
 
-        public ListenableFuture<?> triggerOnDown(final Host host, final boolean isHostAddition) {
+        public ListenableFuture<?> triggerOnDown(final Host host, final boolean isHostAddition, final boolean startReconnection) {
             return executor.submit(new ExceptionCatchingRunnable() {
                 @Override
                 public void runMayThrow() throws InterruptedException, ExecutionException {
-                    onDown(host, isHostAddition, false);
+                    onDown(host, isHostAddition, false, startReconnection);
                 }
             });
         }
@@ -1530,7 +1536,7 @@ public class Cluster implements Closeable {
             // connected to one in the first place, but if we ever do, simply hand it
             // off to onDown
             if (loadBalancingPolicy().distance(host) == HostDistance.IGNORED) {
-                triggerOnDown(host);
+                triggerOnDown(host, true);
                 return;
             }
 
@@ -1570,7 +1576,7 @@ public class Cluster implements Closeable {
                             success = false;
                         }
                         if (!success)
-                            onDown(host, false, true);
+                            onDown(host, false, true, true);
                     }
                 }));
 
@@ -1586,7 +1592,7 @@ public class Cluster implements Closeable {
         }
 
         // Use triggerOnDown unless you're sure you want to run this on the current thread.
-        private void onDown(final Host host, final boolean isHostAddition, final boolean isSuspectedVerification) throws InterruptedException, ExecutionException {
+        private void onDown(final Host host, final boolean isHostAddition, final boolean isSuspectedVerification, boolean startReconnection) throws InterruptedException, ExecutionException {
             logger.debug("Host {} is DOWN", host);
 
             if (isClosed())
@@ -1639,7 +1645,7 @@ public class Cluster implements Closeable {
                 }
 
                 // Don't start a reconnection if we ignore the node anyway (JAVA-314)
-                if (distance == HostDistance.IGNORED)
+                if (distance == HostDistance.IGNORED || !startReconnection)
                     return;
 
                 // Note: we basically waste the first successful reconnection, but it's probably not a big deal
@@ -1899,7 +1905,7 @@ public class Cluster implements Closeable {
             boolean isDown = host.signalConnectionFailure(exception);
             if (isDown) {
                 if (isHostAddition || !markSuspected) {
-                    triggerOnDown(host, isHostAddition);
+                    triggerOnDown(host, isHostAddition, true);
                 } else {
                     // Note that we do want to call onSuspected on the current thread, as the whole point is
                     // that by the time this method return, the host initialReconnectionAttempt will have been
@@ -2151,7 +2157,7 @@ public class Cluster implements Closeable {
                             // right away, so we favor the detection to make the Host.isUp method more reliable.
                             Host hostDown = metadata.getHost(stAddr);
                             if (hostDown != null)
-                                triggerOnDown(hostDown);
+                                triggerOnDown(hostDown, true);
                             break;
                     }
                     break;
@@ -2178,7 +2184,7 @@ public class Cluster implements Closeable {
                                     manager.metadata.removeKeyspace(scc.keyspace);
                                     break;
                                 case TABLE:
-                                    keyspace = manager.metadata.getKeyspace(scc.keyspace);
+                                    keyspace = manager.metadata.getKeyspaceInternal(scc.keyspace);
                                     if (keyspace == null)
                                         logger.warn("Received a DROPPED notification for table {}.{}, but this keyspace is unknown in our metadata",
                                             scc.keyspace, scc.name);
@@ -2186,7 +2192,7 @@ public class Cluster implements Closeable {
                                         keyspace.removeTable(scc.name);
                                     break;
                                 case TYPE:
-                                    keyspace = manager.metadata.getKeyspace(scc.keyspace);
+                                    keyspace = manager.metadata.getKeyspaceInternal(scc.keyspace);
                                     if (keyspace == null)
                                         logger.warn("Received a DROPPED notification for UDT {}.{}, but this keyspace is unknown in our metadata",
                                             scc.keyspace, scc.name);

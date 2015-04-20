@@ -17,16 +17,16 @@ package com.datastax.driver.core;
 
 import java.util.*;
 
-import static org.testng.Assert.assertFalse;
-
 import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertTrue;
 
 import com.datastax.driver.core.exceptions.NoHostAvailableException;
 import com.datastax.driver.core.exceptions.UnsupportedFeatureException;
+import com.datastax.driver.core.utils.CassandraVersion;
 
 import static com.datastax.driver.core.TestUtils.*;
 
@@ -304,10 +304,10 @@ public class PreparedStatementTest extends CCMBridge.PerClassSingleNodeCluster {
 
         assertEquals(session.execute(ps.bind("123")).one().getInt("i"), 17);
 
-        cassandraCluster.stop();
+        ccmBridge.stop();
         waitForDown(CCMBridge.IP_PREFIX + '1', cluster);
 
-        cassandraCluster.start();
+        ccmBridge.start();
         waitFor(CCMBridge.IP_PREFIX + '1', cluster, 120);
 
         try
@@ -331,7 +331,7 @@ public class PreparedStatementTest extends CCMBridge.PerClassSingleNodeCluster {
 
         // This is the same test than reprepareOnNewlyUpNodeTest, except that the
         // prepared statement is prepared while no current keyspace is used
-        reprepareOnNewlyUpNodeTest(TestUtils.SIMPLE_KEYSPACE, cluster.connect());
+        reprepareOnNewlyUpNodeTest(keyspace, cluster.connect());
     }
 
     @Test(groups = "short")
@@ -423,6 +423,7 @@ public class PreparedStatementTest extends CCMBridge.PerClassSingleNodeCluster {
     }
 
     @Test(groups = "short", expectedExceptions = { IllegalStateException.class })
+    @CassandraVersion(major=2.0)
     public void unboundVariableInBatchStatementTest() {
         PreparedStatement ps = session.prepare("INSERT INTO " + SIMPLE_TABLE + " (k, i) VALUES (?, ?)");
         BatchStatement batch = new BatchStatement();
@@ -432,9 +433,9 @@ public class PreparedStatementTest extends CCMBridge.PerClassSingleNodeCluster {
 
     @Test(groups="short")
     public void should_set_routing_key_on_case_insensitive_keyspace_and_table() {
-        session.execute("CREATE TABLE ks.foo (i int PRIMARY KEY)");
+        session.execute(String.format("CREATE TABLE %s.foo (i int PRIMARY KEY)",keyspace));
 
-        PreparedStatement ps = session.prepare("INSERT INTO ks.foo (i) VALUES (?)");
+        PreparedStatement ps = session.prepare(String.format("INSERT INTO %s.foo (i) VALUES (?)",keyspace));
         BoundStatement bs = ps.bind(1);
         assertThat(bs.getRoutingKey()).isNotNull();
     }
