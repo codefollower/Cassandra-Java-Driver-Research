@@ -60,8 +60,12 @@ public class BatchStatementTest extends TestBase {
         cql = " INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (2, true, 'ab')";
         stmt.add(new SimpleStatement(cql));
 
+        //会触发org.apache.cassandra.transport.messages.BatchMessage
         session.execute(stmt);
 
+        //不会触发org.apache.cassandra.transport.messages.BatchMessage
+        //而是org.apache.cassandra.transport.messages.QueryMessage
+        //并且对应org.apache.cassandra.cql3.statements.BatchStatement
         execute(" BEGIN BATCH " + //
                 " INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (3, true, 'ab')" + //
                 " INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (4, true, 'cd')" + //

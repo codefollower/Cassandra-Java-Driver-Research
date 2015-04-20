@@ -17,7 +17,6 @@ package com.datastax.driver.core;
 
 import java.io.Closeable;
 import java.util.Collection;
-import java.util.Map;
 
 import com.google.common.util.concurrent.ListenableFuture;
 

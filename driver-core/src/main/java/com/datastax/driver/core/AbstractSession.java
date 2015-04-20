@@ -100,7 +100,8 @@ public abstract class AbstractSession implements Session {
         if (statement.hasValues())
             throw new IllegalArgumentException("A statement to prepare should not have values");
 
-        ListenableFuture<PreparedStatement> prepared = prepareAsync(statement.toString());
+        //ListenableFuture<PreparedStatement> prepared = prepareAsync(statement.toString());
+        ListenableFuture<PreparedStatement> prepared = prepareAsync(statement.toString(), statement);
         return Futures.transform(prepared, new Function<PreparedStatement, PreparedStatement>() {
             @Override
             public PreparedStatement apply(PreparedStatement prepared) {
@@ -116,6 +117,8 @@ public abstract class AbstractSession implements Session {
             }
         });
     }
+    
+    public abstract ListenableFuture<PreparedStatement> prepareAsync(String query, Statement statement);
 
     /**
      * {@inheritDoc}

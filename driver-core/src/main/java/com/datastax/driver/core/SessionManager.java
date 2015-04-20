@@ -29,6 +29,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 
+import com.datastax.driver.core.Message.Request;
 import com.datastax.driver.core.exceptions.DriverInternalError;
 import com.datastax.driver.core.exceptions.UnsupportedFeatureException;
 import com.datastax.driver.core.policies.LoadBalancingPolicy;
@@ -121,6 +122,16 @@ class SessionManager extends AbstractSession {
 
     public ListenableFuture<PreparedStatement> prepareAsync(String query) {
         Connection.Future future = new Connection.Future(new Requests.Prepare(query));
+        execute(future, Statement.DEFAULT);
+        return toPreparedStatement(query, future);
+    }
+    
+    //我加上的，这样prepare也能用Tracing
+    public ListenableFuture<PreparedStatement> prepareAsync(String query, Statement statement) {
+        Request msg = new Requests.Prepare(query);
+        if (statement.isTracing())
+            msg.setTracingRequested();
+        Connection.Future future = new Connection.Future(msg);
         execute(future, Statement.DEFAULT);
         return toPreparedStatement(query, future);
     }
