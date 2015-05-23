@@ -75,7 +75,8 @@ public class InsertTest extends TestBase {
     }
 
     void insert() throws Exception {
-        int count = 4;
+        int count = 256;
+        count = 1;
         int i = 9;
         for (i = 0; i < count; i++) {
             cql = "INSERT INTO " + tableName + "(block_id, short_hair, f0, f1) " + //
@@ -83,6 +84,7 @@ public class InsertTest extends TestBase {
             SimpleStatement stmt = new SimpleStatement(cql);
             stmt.setConsistencyLevel(ConsistencyLevel.TWO);
             stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);
+            stmt = new SimpleStatement(cql);
             execute(stmt);
         }
 

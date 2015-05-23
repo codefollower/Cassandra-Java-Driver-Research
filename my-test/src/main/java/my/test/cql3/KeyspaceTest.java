@@ -28,15 +28,15 @@ public class KeyspaceTest extends TestBase {
     public void startInternal() throws Exception {
         cql = "DROP KEYSPACE IF EXISTS KeyspaceTest";
         //KEYSPACE和SCHEMA是一样的
-        cql = "DROP SCHEMA IF EXISTS KeyspaceTest3";
-        execute();
+        cql = "DROP SCHEMA IF EXISTS KeyspaceTest";
+        //execute();
 
         //        //NetworkTopologyStrategy不能使用replication_factor
         //        cql = "CREATE KEYSPACE IF NOT EXISTS KeyspaceTest " + //
         //                "WITH replication = {'class':'NetworkTopologyStrategy', 'replication_factor':3} AND DURABLE_WRITES = true";
         //        //tryExecute();
         //        
-        cql = "CREATE KEYSPACE IF NOT EXISTS KeyspaceTest3 " + //
+        cql = "CREATE KEYSPACE IF NOT EXISTS KeyspaceTest " + //
                 "WITH replication = {'class':'SimpleStrategy', 'replication_factor':3} AND DURABLE_WRITES = true";
         execute();
         //

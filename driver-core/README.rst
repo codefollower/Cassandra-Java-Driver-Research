@@ -60,7 +60,7 @@ it in your application using the following Maven dependency::
     <dependency>
       <groupId>com.datastax.cassandra</groupId>
       <artifactId>cassandra-driver-core</artifactId>
-      <version>2.1.5</version>
+      <version>2.1.6</version>
     </dependency>
 
 
@@ -96,5 +96,5 @@ provided as "contact points". Even if only one host was provided, the driver
 would use this host to discover the other ones and use the whole cluster
 automatically. This is also true for new nodes joining the cluster.
 
-For now, please refer to the API reference (http://www.datastax.com/drivers/java/apidocs/).
+For now, please refer to the API reference (http://docs.datastax.com/en/drivers/java/2.0).
 More informations and documentation will come later.

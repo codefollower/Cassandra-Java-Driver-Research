@@ -1,5 +1,5 @@
 /*
- *      Copyright (C) 2012-2014 DataStax Inc.
+ *      Copyright (C) 2012-2015 DataStax Inc.
  *
  *   Licensed under the Apache License, Version 2.0 (the "License");
  *   you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.reflect.TypeToken;
-import org.jboss.netty.buffer.ChannelBuffer;
+import io.netty.buffer.ByteBuf;
 
 import com.datastax.driver.core.exceptions.DriverInternalError;
 import com.datastax.driver.core.exceptions.InvalidTypeException;
@@ -166,7 +166,7 @@ public abstract class DataType {
         this.name = name;
     }
 
-    static DataType decode(ChannelBuffer buffer) {
+    static DataType decode(ByteBuf buffer) {
         Name name = Name.fromProtocolId(buffer.readUnsignedShort());
         switch (name) {
             case CUSTOM:
@@ -363,24 +363,24 @@ public abstract class DataType {
     }
 
     /**
-     * Returns the type of lists of "not frozen" {@code elementType} elements.
+     * Returns the type of "not frozen" lists of {@code elementType} elements.
      * <p>
      * This is a shorthand for {@code list(elementType, false);}.
      *
      * @param elementType the type of the list elements.
-     * @return the type of lists of "not frozen" {@code elementType} elements.
+     * @return the type of "not frozen" lists of {@code elementType} elements.
      */
     public static DataType list(DataType elementType) {
         return list(elementType, false);
     }
 
     /**
-     * Returns the type of lists of frozen {@code elementType} elements.
+     * Returns the type of frozen lists of {@code elementType} elements.
      * <p>
      * This is a shorthand for {@code list(elementType, true);}.
      *
      * @param elementType the type of the list elements.
-     * @return the type of lists of frozen {@code elementType} elements.
+     * @return the type of frozen lists of {@code elementType} elements.
      */
     public static DataType frozenList(DataType elementType) {
         return list(elementType, true);
@@ -403,7 +403,7 @@ public abstract class DataType {
      * This is a shorthand for {@code set(elementType, false);}.
      *
      * @param elementType the type of the set elements.
-     * @return the type of sets of "not frozen" {@code elementType} elements.
+     * @return the type of "not frozen" sets of {@code elementType} elements.
      */
     public static DataType set(DataType elementType) {
         return set(elementType, false);
