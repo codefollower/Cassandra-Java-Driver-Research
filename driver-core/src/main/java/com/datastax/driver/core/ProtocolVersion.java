@@ -35,7 +35,7 @@ public enum ProtocolVersion {
     /**
      * The most recent protocol version supported by the driver.
      */
-    public static ProtocolVersion NEWEST_SUPPORTED = V3;
+    public static final ProtocolVersion NEWEST_SUPPORTED = V3;
 
     private final VersionNumber minCassandraVersion;
     private final int asInt;
@@ -62,7 +62,14 @@ public enum ProtocolVersion {
         return new DriverInternalError("Unsupported protocol version " + this);
     }
 
-    int toInt() {
+    /**
+     * Get the int representation of a protocol version.
+     * This is for use internally by Cassandra to ensure that the
+     * correct version is specified when serializing and deserializing
+     * using classes from the imported driver library.
+     * @return the protocol version as an int
+     */
+    public int toInt() {
         return asInt;
     }
 

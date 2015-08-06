@@ -35,11 +35,11 @@ public class InsertTest extends TestBase {
     public void startInternal() throws Exception {
 
         tableName = "InsertTest3";
-        //createKeyspace();
-        //createTable();
+        createKeyspace();
+        createTable();
 
         insert();
-        //select();
+        // select();
     }
 
     void createKeyspace() throws Exception {
@@ -53,11 +53,11 @@ public class InsertTest extends TestBase {
         cql = "CREATE TABLE IF NOT EXISTS " + tableName //
                 + " ( block_id int, counter_value counter, " //
                 + "PRIMARY KEY (block_id))";
-        //execute(cql);
+        // execute(cql);
 
         execute("DROP TABLE IF EXISTS " + tableName);
 
-        //此时建立的索引是CompositesIndexOnRegular
+        // 此时建立的索引是CompositesIndexOnRegular
         cql = "CREATE TABLE IF NOT EXISTS " + tableName //
                 + " ( block_id int, short_hair boolean, f0 text, f1 text, " //
                 + "PRIMARY KEY (block_id, short_hair, f0)) WITH compaction = { 'class' : 'LeveledCompactionStrategy'}";
@@ -67,9 +67,9 @@ public class InsertTest extends TestBase {
 
     void select() {
         cql = "select * from " + tableName + " where block_id in (1,2,3)";
-        //cql = "select * from system.hints";
+        // cql = "select * from system.hints";
         ResultSet rs = session.execute(cql);
-        //rs.all();
+        // rs.all();
         for (Row row : rs)
             System.out.println(row);
     }
@@ -81,49 +81,49 @@ public class InsertTest extends TestBase {
         for (i = 0; i < count; i++) {
             cql = "INSERT INTO " + tableName + "(block_id, short_hair, f0, f1) " + //
                     "VALUES (" + i + ", true, 'T" + i + "', (text)'ab" + i + "')";
-            SimpleStatement stmt = new SimpleStatement(cql);
+            SimpleStatement stmt = session.newSimpleStatement(cql);// new SimpleStatement(cql);
             stmt.setConsistencyLevel(ConsistencyLevel.TWO);
             stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);
-            stmt = new SimpleStatement(cql);
+            stmt = session.newSimpleStatement(cql);// new SimpleStatement(cql);
             execute(stmt);
         }
 
-        //错误: Multiple definitions found for column f1
-        //        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1, f1) VALUES (?, ?, ?, ?)";
+        // 错误: Multiple definitions found for column f1
+        // cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1, f1) VALUES (?, ?, ?, ?)";
         //
-        //        cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (?, ?, ?) USING TIMESTAMP ? AND TTL ?";
-        //        PreparedStatement statement = session.prepare(cql);
-        //        BoundStatement boundStatement = new BoundStatement(statement);
-        //        //TIMESTAMP必须是long类型(所以要明确加L)，而TTL必须是int
-        //        //否则出错: 
-        //        //Invalid type for value 3 of CQL type bigint, 
-        //        //expecting class java.lang.Long but class java.lang.Integer provided
-        //        //session.execute(boundStatement.bind(1, true, "ab", 10000, 100));
-        //        session.execute(boundStatement.bind(1, true, "ab", 10000L, 100));
+        // cql = "INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (?, ?, ?) USING TIMESTAMP ? AND TTL ?";
+        // PreparedStatement statement = session.prepare(cql);
+        // BoundStatement boundStatement = new BoundStatement(statement);
+        // //TIMESTAMP必须是long类型(所以要明确加L)，而TTL必须是int
+        // //否则出错:
+        // //Invalid type for value 3 of CQL type bigint,
+        // //expecting class java.lang.Long but class java.lang.Integer provided
+        // //session.execute(boundStatement.bind(1, true, "ab", 10000, 100));
+        // session.execute(boundStatement.bind(1, true, "ab", 10000L, 100));
 
-        //                execute("drop table if EXISTS " + tableName + "2");
-        //                cql = "CREATE TABLE IF NOT EXISTS " + tableName + "2" //
-        //                        + " ( block_id int, f1 int, f2 int, f3 int, " //
-        //                        + "PRIMARY KEY ((block_id, f1), f2))";
-        //                execute(cql);
-        //        
-        //                cql = "INSERT INTO " + tableName + "2" + "(block_id, f1, f2, f3) VALUES (1,2,3,4)";
-        //                stmt = new SimpleStatement(cql);
-        //                execute(stmt);
-        //                
-        //                cql = "SELECT * FROM " + tableName + "2" + " WHERE block_id in(1,2,3)";
-        //                cql = "SELECT * FROM " + tableName + "2" + " WHERE block_id =1 AND f1 in(1,2,3)";
-        //                
-        //                //错误的:IN is only supported on the last column of the partition key
-        //                cql = "DELETE FROM " + tableName + "2" + " WHERE block_id in(1,2,3)";
-        //                cql = "DELETE FROM " + tableName + "2" + " WHERE block_id =1 AND f1 in(1,2,3)";
-        ////                execute(cql);
+        // execute("drop table if EXISTS " + tableName + "2");
+        // cql = "CREATE TABLE IF NOT EXISTS " + tableName + "2" //
+        // + " ( block_id int, f1 int, f2 int, f3 int, " //
+        // + "PRIMARY KEY ((block_id, f1), f2))";
+        // execute(cql);
         //
-        //        execute("BEGIN BATCH " + //
-        //                " INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (1, true, 'ab')" + //
-        //                " INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (2, true, 'cd')" + //
-        //                " APPLY BATCH");
+        // cql = "INSERT INTO " + tableName + "2" + "(block_id, f1, f2, f3) VALUES (1,2,3,4)";
+        // stmt = new SimpleStatement(cql);
+        // execute(stmt);
+        //
+        // cql = "SELECT * FROM " + tableName + "2" + " WHERE block_id in(1,2,3)";
+        // cql = "SELECT * FROM " + tableName + "2" + " WHERE block_id =1 AND f1 in(1,2,3)";
+        //
+        // //错误的:IN is only supported on the last column of the partition key
+        // cql = "DELETE FROM " + tableName + "2" + " WHERE block_id in(1,2,3)";
+        // cql = "DELETE FROM " + tableName + "2" + " WHERE block_id =1 AND f1 in(1,2,3)";
+        // // execute(cql);
+        //
+        // execute("BEGIN BATCH " + //
+        // " INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (1, true, 'ab')" + //
+        // " INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (2, true, 'cd')" + //
+        // " APPLY BATCH");
 
-        //tryExecute("DELETE FROM " + tableName + " WHERE block_id in(1,2,3) IF f1='ab' AND short_hair=true");
+        // tryExecute("DELETE FROM " + tableName + " WHERE block_id in(1,2,3) IF f1='ab' AND short_hair=true");
     }
 }

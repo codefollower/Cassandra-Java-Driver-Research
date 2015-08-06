@@ -16,7 +16,7 @@ not yet have been released. You can find the documentation for latest
 version through [Java driver
 docs](http://datastax.github.io/java-driver/) or via the release tags,
 [e.g.
-2.1.6](https://github.com/datastax/java-driver/tree/2.1.6).*
+2.1.7](https://github.com/datastax/java-driver/tree/2.1.7).*
 
 A modern, [feature-rich](features/) and highly tunable Java client
 library for Apache Cassandra (1.2+) and DataStax Enterprise (3.1+) using
@@ -57,19 +57,26 @@ relatively low-level API on top of which higher level layers can be built.
 
 需要JDK7以及[Apache Maven](http://maven.apache.org/)
 
+<<<<<<< HEAD
 
 <<<<<<< HEAD
 ## 安装
 =======
+=======
+>>>>>>> a61ec453c0fd19083590568baf7f345bec5c709e
 **Community:**
 
 - JIRA: https://datastax-oss.atlassian.net/browse/JAVA
 - MAILING LIST: https://groups.google.com/a/lists.datastax.com/forum/#!forum/java-driver-user
 - IRC: #datastax-drivers on [irc.freenode.net](http://freenode.net)
 - TWITTER: Follow the latest news about DataStax Drivers - [@olim7t](http://twitter.com/olim7t), [@mfiguiere](http://twitter.com/mfiguiere)
-- DOCS: http://www.datastax.com/documentation/developer/java-driver/2.1/index.html
+- DOCS: the [user guide](http://docs.datastax.com/en/developer/java-driver/2.1/java-driver/whatsNew2.html)
+  has introductory material. We are progressively migrating the doc
+  [here](features/) with more technical details.
 - API: http://www.datastax.com/drivers/java/2.1
-- CHANGELOG: https://github.com/datastax/java-driver/blob/2.1/driver-core/CHANGELOG.rst
+
+**Feeback requested:** help us focus our efforts, provide your input on the [Platform and Runtime Survey](http://goo.gl/forms/qwUE6qnL7U) (we kept it short).  
+
 
 ## Maven
 >>>>>>> b4d397c33abec1f42fa8a35869e219ef60c0e7e8
@@ -82,7 +89,7 @@ mvn install -Dmaven.test.skip=true
 <dependency>
   <groupId>com.datastax.cassandra</groupId>
   <artifactId>cassandra-driver-core</artifactId>
-  <version>2.1.6</version>
+  <version>2.1.7</version>
 </dependency>
 ```
 >>>>>>> b4d397c33abec1f42fa8a35869e219ef60c0e7e8
@@ -99,7 +106,7 @@ File->Import->General->Existing Projects into Workspace
 <dependency>
   <groupId>com.datastax.cassandra</groupId>
   <artifactId>cassandra-driver-mapping</artifactId>
-  <version>2.1.6</version>
+  <version>2.1.7</version>
 </dependency>
 ```
 
@@ -125,11 +132,8 @@ an [UnsupportedFeatureException](https://github.com/datastax/java-driver/blob/2.
 
 ## Upgrading from previous versions
 
-If you are upgrading from the 2.0.x branch of the driver, be sure to have a look at
-the [upgrade guide](https://github.com/datastax/java-driver/blob/2.1/driver-core/Upgrade_guide_to_2.1.rst).
-
-If you are upgrading from the 1.x branch, follow the [upgrade guide to 2.0](https://github.com/datastax/java-driver/blob/2.0/driver-core/Upgrade_guide_to_2.0.rst),
-and then the above document.
+If you are upgrading from a previous version of the driver, be sure to have a look at
+the [upgrade guide](/upgrade_guide/).
 
 
 ### Troubleshooting

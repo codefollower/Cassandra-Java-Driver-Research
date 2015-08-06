@@ -15,15 +15,6 @@
  */
 package com.datastax.driver.core;
 
-import com.datastax.driver.core.exceptions.NoHostAvailableException;
-import com.datastax.driver.core.policies.ConstantReconnectionPolicy;
-import com.datastax.driver.core.querybuilder.Insert;
-import com.datastax.driver.core.utils.UUIDs;
-import com.google.common.collect.Lists;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.testng.annotations.Test;
-
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.Collections;
@@ -31,10 +22,23 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import com.google.common.collect.Lists;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.testng.annotations.Test;
+
+import static org.assertj.core.api.Assertions.fail;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+
+import com.datastax.driver.core.exceptions.NoHostAvailableException;
+import com.datastax.driver.core.policies.ConstantReconnectionPolicy;
+import com.datastax.driver.core.querybuilder.Insert;
+import com.datastax.driver.core.utils.UUIDs;
+
 import static com.datastax.driver.core.FakeHost.Behavior.THROWING_CONNECT_TIMEOUTS;
 import static com.datastax.driver.core.querybuilder.QueryBuilder.insertInto;
-import static org.assertj.core.api.Assertions.fail;
-import static org.mockito.Mockito.*;
 
 public class ClusterInitTest {
     private static final Logger logger = LoggerFactory.getLogger(ClusterInitTest.class);
@@ -52,8 +56,7 @@ public class ClusterInitTest {
         try {
             // Obtaining connect timeouts is not trivial: we create a 6-host cluster but only start one of them,
             // then simulate the other 5.
-            ccm = CCMBridge.create("test");
-            ccm.populate(6);
+            ccm = CCMBridge.builder("test").withNodes(6).notStarted().build();
             ccm.start(1);
 
             for (int i = 0; i < 5; i++) {
@@ -92,10 +95,7 @@ public class ClusterInitTest {
 
             // We have one live host so 2 successful connections (1 control connection and 1 core connection in the pool).
             // The other 5 hosts are unreachable, we should attempt to connect to each of them only once.
-            int coreConnections = cluster.getConfiguration()
-                    .getPoolingOptions()
-                    .getCoreConnectionsPerHost(HostDistance.LOCAL);
-            verify(socketOptions, times(1 + coreConnections + 5)).getKeepAlive();
+            verify(socketOptions, times(1 + TestUtils.numberOfLocalCoreConnections(cluster) + 5)).getKeepAlive();
         } finally {
             if (cluster != null)
                 cluster.close();

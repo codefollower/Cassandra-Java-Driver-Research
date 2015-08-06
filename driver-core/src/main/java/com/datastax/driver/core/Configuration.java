@@ -46,7 +46,7 @@ public class Configuration {
      * Creates a configuration object.
      */
     public Configuration() {
-        this(new Policies(),
+        this(Policies.builder().build(),
              new ProtocolOptions(),
              new PoolingOptions(),
              new SocketOptions(),
@@ -80,6 +80,20 @@ public class Configuration {
         this.metricsOptions = metricsOptions;
         this.queryOptions = queryOptions;
         this.nettyOptions = nettyOptions;
+    }
+
+    /**
+     * @deprecated this constructor is provided for backward compatibility.
+     */
+    @Deprecated
+    public Configuration(Policies policies,
+                         ProtocolOptions protocolOptions,
+                         PoolingOptions poolingOptions,
+                         SocketOptions socketOptions,
+                         MetricsOptions metricsOptions,
+                         QueryOptions queryOptions) {
+        this(policies, protocolOptions, poolingOptions, socketOptions, metricsOptions, queryOptions,
+            NettyOptions.DEFAULT_INSTANCE);
     }
 
     void register(Cluster.Manager manager) {

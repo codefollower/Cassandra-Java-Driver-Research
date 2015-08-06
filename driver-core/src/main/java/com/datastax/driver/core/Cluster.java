@@ -282,14 +282,16 @@ public class Cluster implements Closeable {
         long timeout = getConfiguration().getSocketOptions().getConnectTimeoutMillis();
         Session session = connect();
         try {
-            ResultSetFuture future = session.executeAsync("USE " + keyspace);
-            // Note: using the connection timeout isn't perfectly correct, we should probably change that someday
-            Uninterruptibles.getUninterruptibly(future, timeout, TimeUnit.MILLISECONDS);
-            return session;
-        } catch (TimeoutException e) {
-            throw new DriverInternalError(String.format("No responses after %d milliseconds while setting current keyspace. This should not happen, unless you have setup a very low connection timeout.", timeout));
-        } catch (ExecutionException e) {
-            throw DefaultResultSetFuture.extractCauseFromExecutionException(e);
+            try {
+                ResultSetFuture future = session.executeAsync("USE " + keyspace);
+                // Note: using the connection timeout isn't perfectly correct, we should probably change that someday
+                Uninterruptibles.getUninterruptibly(future, timeout, TimeUnit.MILLISECONDS);
+                return session;
+            } catch (TimeoutException e) {
+                throw new DriverInternalError(String.format("No responses after %d milliseconds while setting current keyspace. This should not happen, unless you have setup a very low connection timeout.", timeout));
+            } catch (ExecutionException e) {
+                throw DefaultResultSetFuture.extractCauseFromExecutionException(e);
+            }
         } catch (RuntimeException e) {
             session.close();
             throw e;
@@ -791,6 +793,38 @@ public class Cluster implements Closeable {
         }
 
         /**
+         * Adds a contact point - or many if it host resolves to multiple <code>InetAddress</code>s (A records).
+         * <p>
+         *
+         * If the host name points to a dns records with multiple a-records, all InetAddresses
+         * returned will be used. Make sure that all resulting <code>InetAddress</code>s returned
+         * points to the same cluster and datacenter.
+         * <p>
+         * See {@link Builder#addContactPoint} for more details on contact
+         * points and thrown exceptions
+         *
+         * @param address address of the nodes to look up InetAddresses from to add as contact points.
+         * @return this Builder.
+         *
+         *
+         * @see Builder#addContactPoint
+         */
+        public Builder addContactPoints(String address) {
+            // We explicitely check for nulls because InetAdress.getByName() will happily
+            // accept it and use localhost (while a null here almost likely mean a user error,
+            // not "connect to localhost")
+            if (address == null)
+                throw new NullPointerException();
+
+            try {
+                addContactPoints(InetAddress.getAllByName(address));
+            } catch (UnknownHostException e) {
+                throw new IllegalArgumentException(e.getMessage());
+            }
+            return this;
+        }
+
+        /**
          * Adds contact points.
          * <p>
          * See {@link Builder#addContactPoint} for more details on contact
@@ -1123,14 +1157,14 @@ public class Cluster implements Closeable {
          */
         @Override
         public Configuration getConfiguration() {
-            Policies policies = new Policies(
-                loadBalancingPolicy == null ? Policies.defaultLoadBalancingPolicy() : loadBalancingPolicy,
-                Objects.firstNonNull(reconnectionPolicy, Policies.defaultReconnectionPolicy()),
-                Objects.firstNonNull(retryPolicy, Policies.defaultRetryPolicy()),
-                Objects.firstNonNull(addressTranslater, Policies.defaultAddressTranslater()),
-                Objects.firstNonNull(timestampGenerator, Policies.defaultTimestampGenerator()),
-                Objects.firstNonNull(speculativeExecutionPolicy, Policies.defaultSpeculativeExecutionPolicy())
-            );
+            Policies policies = Policies.builder()
+                .withLoadBalancingPolicy(loadBalancingPolicy)
+                .withReconnectionPolicy(reconnectionPolicy)
+                .withRetryPolicy(retryPolicy)
+                .withAddressTranslater(addressTranslater)
+                .withTimestampGenerator(timestampGenerator)
+                .withSpeculativeExecutionPolicy(speculativeExecutionPolicy)
+                .build();
             return new Configuration(policies,
                                      new ProtocolOptions(port, protocolVersion, maxSchemaAgreementWaitSeconds, sslOptions, authProvider).setCompression(compression),
                                      poolingOptions == null ? new PoolingOptions() : poolingOptions,
@@ -1293,11 +1327,14 @@ public class Cluster implements Closeable {
                 // Now that the control connection is ready, we have all the information we need about the nodes (datacenter,
                 // rack...) to initialize the load balancing policy
                 loadBalancingPolicy().init(Cluster.this, contactPointHosts);
+                speculativeRetryPolicy().init(Cluster.this);
                 for (Host host : downContactPointHosts) {
                     loadBalancingPolicy().onDown(host);
                     for (Host.StateListener listener : listeners)
                         listener.onDown(host);
                 }
+
+                configuration.getPoolingOptions().setProtocolVersion(protocolVersion());
 
                 for (Host host : metadata.allHosts()) {
                     // If the host is down at this stage, it's a contact point that the control connection failed to reach.
@@ -1417,6 +1454,8 @@ public class Cluster implements Closeable {
                 LoadBalancingPolicy loadBalancingPolicy = loadBalancingPolicy();
                 if (loadBalancingPolicy instanceof CloseableLoadBalancingPolicy)
                     ((CloseableLoadBalancingPolicy)loadBalancingPolicy).close();
+
+                speculativeRetryPolicy().close();
 
                 AddressTranslater translater = configuration.getPolicies().getAddressTranslater();
                 if (translater instanceof CloseableAddressTranslater)
@@ -1551,7 +1590,7 @@ public class Cluster implements Closeable {
                     } catch (ExecutionException e) {
                         Throwable t = e.getCause();
                         // That future is not really supposed to throw unexpected exceptions
-                        if (!(t instanceof InterruptedException))
+                        if (!(t instanceof InterruptedException) && !(t instanceof CancellationException))
                             logger.error("Unexpected error while marking node UP: while this shouldn't happen, this shouldn't be critical", t);
                     }
 
@@ -1822,7 +1861,7 @@ public class Cluster implements Closeable {
                     } catch (ExecutionException e) {
                         Throwable t = e.getCause();
                         // That future is not really supposed to throw unexpected exceptions
-                        if (!(t instanceof InterruptedException))
+                        if (!(t instanceof InterruptedException) && !(t instanceof CancellationException))
                             logger.error("Unexpected error while adding node: while this shouldn't happen, this shouldn't be critical", t);
                     }
 
