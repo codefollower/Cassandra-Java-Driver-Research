@@ -22,7 +22,6 @@ import my.test.TestBase;
 import com.datastax.driver.core.BatchStatement;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
-import com.datastax.driver.core.SimpleStatement;
 
 public class BatchStatementTest extends TestBase {
     public static void main(String[] args) throws Exception {
@@ -56,16 +55,16 @@ public class BatchStatementTest extends TestBase {
     void insert() throws Exception {
         cql = " INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (1, true, 'ab')";
         BatchStatement stmt = new BatchStatement(BatchStatement.Type.LOGGED);
-        stmt.add(new SimpleStatement(cql));
+        stmt.add(newSimpleStatement(cql));
         cql = " INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (2, true, 'ab')";
-        stmt.add(new SimpleStatement(cql));
+        stmt.add(newSimpleStatement(cql));
 
-        //会触发org.apache.cassandra.transport.messages.BatchMessage
+        // 会触发org.apache.cassandra.transport.messages.BatchMessage
         session.execute(stmt);
 
-        //不会触发org.apache.cassandra.transport.messages.BatchMessage
-        //而是org.apache.cassandra.transport.messages.QueryMessage
-        //并且对应org.apache.cassandra.cql3.statements.BatchStatement
+        // 不会触发org.apache.cassandra.transport.messages.BatchMessage
+        // 而是org.apache.cassandra.transport.messages.QueryMessage
+        // 并且对应org.apache.cassandra.cql3.statements.BatchStatement
         execute(" BEGIN BATCH " + //
                 " INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (3, true, 'ab')" + //
                 " INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (4, true, 'cd')" + //

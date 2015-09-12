@@ -36,6 +36,9 @@ public class InsertTest extends TestBase {
 
         tableName = "InsertTest3";
         createKeyspace();
+
+        execute("USE InsertTestKS");
+
         createTable();
 
         insert();
@@ -43,8 +46,21 @@ public class InsertTest extends TestBase {
     }
 
     void createKeyspace() throws Exception {
+        cql = "DROP KEYSPACE IF EXISTS InsertTestKS";
+        execute(cql);
+
         cql = "CREATE KEYSPACE IF NOT EXISTS InsertTestKS WITH replication "
                 + "= {'class':'SimpleStrategy', 'replication_factor':3};";
+
+        cql = "CREATE KEYSPACE IF NOT EXISTS InsertTestKS WITH replication "
+                + "= {'class':'NetworkTopologyStrategy', 'DC1':3, 'DC2':3};";
+
+        // 如果数据中心名称不存在，这条CQL并不会出错，但是在执行接下来的insert时java-driver会提前报错
+        cql = "CREATE KEYSPACE IF NOT EXISTS InsertTestKS WITH replication "
+                + "= {'class':'NetworkTopologyStrategy', 'DC1':3};";
+
+        cql = "CREATE KEYSPACE IF NOT EXISTS InsertTestKS WITH replication "
+                + "= {'class':'NetworkTopologyStrategy', 'datacenter1':3};";
         execute(cql);
         execute("USE InsertTestKS");
     }
@@ -81,10 +97,11 @@ public class InsertTest extends TestBase {
         for (i = 0; i < count; i++) {
             cql = "INSERT INTO " + tableName + "(block_id, short_hair, f0, f1) " + //
                     "VALUES (" + i + ", true, 'T" + i + "', (text)'ab" + i + "')";
-            SimpleStatement stmt = session.newSimpleStatement(cql);// new SimpleStatement(cql);
-            stmt.setConsistencyLevel(ConsistencyLevel.TWO);
-            stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);
-            stmt = session.newSimpleStatement(cql);// new SimpleStatement(cql);
+            SimpleStatement stmt = newSimpleStatement(cql);
+            // stmt.setConsistencyLevel(ConsistencyLevel.TWO);
+            // stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);
+            stmt.setConsistencyLevel(ConsistencyLevel.EACH_QUORUM);
+            stmt = newSimpleStatement(cql);
             execute(stmt);
         }
 
@@ -102,10 +119,10 @@ public class InsertTest extends TestBase {
         // session.execute(boundStatement.bind(1, true, "ab", 10000L, 100));
 
         // execute("drop table if EXISTS " + tableName + "2");
-        // cql = "CREATE TABLE IF NOT EXISTS " + tableName + "2" //
-        // + " ( block_id int, f1 int, f2 int, f3 int, " //
-        // + "PRIMARY KEY ((block_id, f1), f2))";
-        // execute(cql);
+        cql = "CREATE TABLE IF NOT EXISTS " + tableName + "2" //
+                + " ( block_id int, f1 int, f2 int, f3 int, " //
+                + "PRIMARY KEY ((block_id, f1), f2))";
+        execute(cql);
         //
         // cql = "INSERT INTO " + tableName + "2" + "(block_id, f1, f2, f3) VALUES (1,2,3,4)";
         // stmt = new SimpleStatement(cql);
@@ -116,8 +133,8 @@ public class InsertTest extends TestBase {
         //
         // //错误的:IN is only supported on the last column of the partition key
         // cql = "DELETE FROM " + tableName + "2" + " WHERE block_id in(1,2,3)";
-        // cql = "DELETE FROM " + tableName + "2" + " WHERE block_id =1 AND f1 in(1,2,3)";
-        // // execute(cql);
+        cql = "DELETE FROM " + tableName + "2" + " WHERE block_id =1 AND f1 in(1,2,3)";
+        execute(cql);
         //
         // execute("BEGIN BATCH " + //
         // " INSERT INTO " + tableName + "(block_id, short_hair, f1) VALUES (1, true, 'ab')" + //

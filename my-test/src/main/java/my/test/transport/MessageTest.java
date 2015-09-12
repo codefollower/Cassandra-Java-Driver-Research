@@ -30,7 +30,7 @@ public class MessageTest extends TestBase {
 
     @Override
     public void startInternal() throws Exception {
-        SimpleStatement stmt = new SimpleStatement("USE " + KEYSPACE_NAME);
+        SimpleStatement stmt = newSimpleStatement("USE " + KEYSPACE_NAME);
         stmt.enableTracing();
         PreparedStatement ps = session.prepare(stmt);
         BoundStatement boundStatement = new BoundStatement(ps);

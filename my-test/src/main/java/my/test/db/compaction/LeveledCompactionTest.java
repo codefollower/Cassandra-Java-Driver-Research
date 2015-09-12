@@ -15,23 +15,30 @@ public class LeveledCompactionTest extends TestBase {
     @Override
     public void startInternal() throws Exception {
         tableName = "LeveledCompactionTest";
-        //create();
+        // create();
         insert();
         select();
     }
 
     void create() throws Exception {
-        cql = "CREATE TABLE IF NOT EXISTS " + tableName + //
-                " (id int, f1 int, f2 text, f3 int, PRIMARY KEY (id, f1))" + //
-                "WITH compaction = { 'class' : 'LeveledCompactionStrategy', " + //
-                //4个公共选项在AbstractCompactionStrategy中定义并由AbstractCompactionStrategy验证
-                "'tombstone_threshold' : 0.2, 'tombstone_compaction_interval' : 86400, " + //
-                "'unchecked_tombstone_compaction' : 'false', 'enabled' : 'true', " + //
-                //注意这两选项没有被忽略，不能出现
-                //"'min_threshold' : 6, 'max_threshold' : 16, " + //
-                //SizeTieredCompactionStrategy专属选项，被忽略
-                "'min_sstable_size' : 52428800, 'bucket_low' : 0.5, 'bucket_high' : 1.5, 'cold_reads_to_omit' : 0.05, " + //
-                //LeveledCompactionStrategy专属选项
+        cql = "CREATE TABLE IF NOT EXISTS "
+                + tableName
+                + //
+                " (id int, f1 int, f2 text, f3 int, PRIMARY KEY (id, f1))"
+                + //
+                "WITH compaction = { 'class' : 'LeveledCompactionStrategy', "
+                + //
+                // 4个公共选项在AbstractCompactionStrategy中定义并由AbstractCompactionStrategy验证
+                "'tombstone_threshold' : 0.2, 'tombstone_compaction_interval' : 86400, "
+                + //
+                "'unchecked_tombstone_compaction' : 'false', 'enabled' : 'true', "
+                + //
+                // 注意这两选项没有被忽略，不能出现
+                // "'min_threshold' : 6, 'max_threshold' : 16, " + //
+                // SizeTieredCompactionStrategy专属选项，被忽略
+                "'min_sstable_size' : 52428800, 'bucket_low' : 0.5, 'bucket_high' : 1.5, 'cold_reads_to_omit' : 0.05, "
+                + //
+                // LeveledCompactionStrategy专属选项
                 "'sstable_size_in_mb' : 1}";
         tryExecute();
     }
@@ -41,7 +48,7 @@ public class LeveledCompactionTest extends TestBase {
         for (int i = 0; i < count; i++) {
             cql = "INSERT INTO " + tableName + "(id, f1, f2) " + //
                     "VALUES (" + i + ", " + i + ", 'T" + i + "') USING TTL 300";
-            SimpleStatement stmt = new SimpleStatement(cql);
+            SimpleStatement stmt = newSimpleStatement(cql);
             stmt.setConsistencyLevel(ConsistencyLevel.TWO);
             stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);
             stmt.setConsistencyLevel(ConsistencyLevel.ONE);
@@ -60,7 +67,7 @@ public class LeveledCompactionTest extends TestBase {
     void select() {
         cql = "select * from " + tableName + " where id in (1,2,3)";
         ResultSet rs = session.execute(cql);
-        //rs.all();
+        // rs.all();
         for (Row row : rs)
             System.out.println(row);
     }

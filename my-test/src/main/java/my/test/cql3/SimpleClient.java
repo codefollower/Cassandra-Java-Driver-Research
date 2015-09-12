@@ -65,7 +65,8 @@ public class SimpleClient {
         Metadata metadata = cluster.getMetadata();
         System.out.printf("Connected to cluster: %s\n", metadata.getClusterName());
         for (Host host : metadata.getAllHosts()) {
-            System.out.printf("Datatacenter: %s; Host: %s; Rack: %s\n", host.getDatacenter(), host.getAddress(), host.getRack());
+            System.out.printf("Datatacenter: %s; Host: %s; Rack: %s\n", host.getDatacenter(), host.getAddress(),
+                    host.getRack());
         }
 
         session = cluster.connect();
@@ -79,8 +80,8 @@ public class SimpleClient {
         session.execute("CREATE KEYSPACE IF NOT EXISTS simplex WITH replication "
                 + "= {'class':'SimpleStrategy', 'replication_factor':3};");
 
-        session.execute("CREATE TABLE IF NOT EXISTS simplex.songs (" + "id uuid PRIMARY KEY," + "title text," + "album text,"
-                + "artist text," + "tags set<text>," + "data blob" + ");");
+        session.execute("CREATE TABLE IF NOT EXISTS simplex.songs (" + "id uuid PRIMARY KEY," + "title text,"
+                + "album text," + "artist text," + "tags set<text>," + "data blob" + ");");
         session.execute("CREATE TABLE IF NOT EXISTS simplex.playlists (" + "id uuid," + "title text," + "album text, "
                 + "artist text," + "song_id uuid," + "PRIMARY KEY (id, title, album, artist)" + ");");
     }
@@ -109,8 +110,8 @@ public class SimpleClient {
                 + "756716f7-2e54-4715-9f00-91dcbea6cf50," + "'La Petite Tonkinoise'," + "'Bye Bye Blackbird',"
                 + "'Joséphine Baker'," + "{'jazz', '2013'})" + ";");
         session.execute("INSERT INTO simplex.playlists (id, song_id, title, album, artist) " + "VALUES ("
-                + "2cc9ccb7-6221-4ccb-8387-f22b6a1b354d," + "756716f7-2e54-4715-9f00-91dcbea6cf50," + "'La Petite Tonkinoise',"
-                + "'Bye Bye Blackbird'," + "'Joséphine Baker'" + ");");
+                + "2cc9ccb7-6221-4ccb-8387-f22b6a1b354d," + "756716f7-2e54-4715-9f00-91dcbea6cf50,"
+                + "'La Petite Tonkinoise'," + "'Bye Bye Blackbird'," + "'Joséphine Baker'" + ");");
     }
 
     public void querySchema() {
@@ -364,8 +365,8 @@ public class SimpleClient {
         boundStatement = new BoundStatement(statement);
         getSession().execute(
                 boundStatement.bind(UUID.fromString("2cc9ccb7-6221-4ccb-8387-f22b6a1b354d"),
-                        UUID.fromString("756716f7-2e54-4715-9f00-91dcbea6cf50"), "La Petite Tonkinoise", "Bye Bye Blackbird",
-                        "Joséphine Baker"));
+                        UUID.fromString("756716f7-2e54-4715-9f00-91dcbea6cf50"), "La Petite Tonkinoise",
+                        "Bye Bye Blackbird", "Joséphine Baker"));
     }
 
     public void queryUsingPreparedStatement() {
@@ -374,7 +375,8 @@ public class SimpleClient {
 
         System.out.println(String.format("%-30s\t%-20s\t%-20s\n%s", "title", "album", "artist",
                 "-------------------------------+-----------------------+--------------------"));
-        for (Row row : getSession().execute(boundStatement.bind(UUID.fromString("2cc9ccb7-6221-4ccb-8387-f22b6a1b354d")))) {
+        for (Row row : getSession().execute(
+                boundStatement.bind(UUID.fromString("2cc9ccb7-6221-4ccb-8387-f22b6a1b354d")))) {
 
             System.out.println(String.format("%-30s\t%-20s\t%-20s", row.getString("title"), row.getString("album"),
                     row.getString("artist")));
@@ -385,7 +387,8 @@ public class SimpleClient {
     public void testInsert() {
         session.execute("INSERT INTO simplex.songs (id, title, album, artist, tags) " + "VALUES ("
                 + "756716f7-2e54-4715-9f00-91dcbea6cf50," + "'La Petite Tonkinoise'," + "'Bye Bye Blackbird',"
-                + "'Joséphine Baker'," + "{'jazz', '2013'})" + " USING TTL 86400" + " and TIMESTAMP 1318452291034" + ";");
+                + "'Joséphine Baker'," + "{'jazz', '2013'})" + " USING TTL 86400" + " and TIMESTAMP 1318452291034"
+                + ";");
     }
 
     public void testDelete() {
@@ -408,23 +411,23 @@ public class SimpleClient {
     public void run() {
         connect("127.0.0.1");
         createSchema();
-        //session.execute("USE simplex");
+        // session.execute("USE simplex");
 
-        SimpleStatement stmt = new SimpleStatement("USE simplex");
+        SimpleStatement stmt = session.newSimpleStatement("USE simplex");
         stmt.enableTracing();
         session.execute(stmt);
 
         // loadData();
-        //loadDataUsingBoundStatements();
+        // loadDataUsingBoundStatements();
         // querySchema();
-        //queryUsingPreparedStatement();
+        // queryUsingPreparedStatement();
 
         // testInsert();
         // testUpdate();
         // testDelete();
         // testSelect();
         // testCounterColumn();
-        //testSetCollectionType();
+        // testSetCollectionType();
         // testListCollectionType();
         // testMapCollectionType();
 

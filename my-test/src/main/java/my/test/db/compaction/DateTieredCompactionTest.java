@@ -32,7 +32,7 @@ public class DateTieredCompactionTest extends TestBase {
     @Override
     public void startInternal() throws Exception {
         tableName = "DateTieredCompactionTest";
-        //create();
+        // create();
         insert();
         select();
     }
@@ -40,12 +40,12 @@ public class DateTieredCompactionTest extends TestBase {
     void create() throws Exception {
         cql = "CREATE TABLE IF NOT EXISTS " + tableName + " (id int PRIMARY KEY, f1 int, f2 text)" + //
                 "WITH compaction = { 'class' : 'DateTieredCompactionStrategy', " + //
-                //4个公共选项在AbstractCompactionStrategy中定义并由AbstractCompactionStrategy验证
+                // 4个公共选项在AbstractCompactionStrategy中定义并由AbstractCompactionStrategy验证
                 "'tombstone_threshold' : 0.2, 'tombstone_compaction_interval' : 86400, " + //
                 "'unchecked_tombstone_compaction' : 'false', 'enabled' : 'true', " + //
-                //这两选项被忽略
+                // 这两选项被忽略
                 "'min_threshold' : 6, 'max_threshold' : 16, " + //
-                //DateTieredCompactionStrategy专属选项
+                // DateTieredCompactionStrategy专属选项
                 "'timestamp_resolution' : 'MICROSECONDS', 'max_sstable_age_days' : 365, 'base_time_seconds' : 3600}";
         tryExecute();
     }
@@ -55,7 +55,7 @@ public class DateTieredCompactionTest extends TestBase {
         for (int i = 0; i < count; i++) {
             cql = "INSERT INTO " + tableName + "(id, f1, f2) " + //
                     "VALUES (" + i + ", " + i + ", 'T" + i + "')";
-            SimpleStatement stmt = new SimpleStatement(cql);
+            SimpleStatement stmt = newSimpleStatement(cql);
             stmt.setConsistencyLevel(ConsistencyLevel.TWO);
             stmt.setConsistencyLevel(ConsistencyLevel.QUORUM);
             stmt.setConsistencyLevel(ConsistencyLevel.ONE);
@@ -66,7 +66,7 @@ public class DateTieredCompactionTest extends TestBase {
     void select() {
         cql = "select * from " + tableName + " where id in (1,2,3)";
         ResultSet rs = session.execute(cql);
-        //rs.all();
+        // rs.all();
         for (Row row : rs)
             System.out.println(row);
     }

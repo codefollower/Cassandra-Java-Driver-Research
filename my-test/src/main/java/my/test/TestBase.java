@@ -23,13 +23,15 @@ import com.datastax.driver.core.ConsistencyLevel;
 import com.datastax.driver.core.DataType;
 import com.datastax.driver.core.HostDistance;
 import com.datastax.driver.core.PoolingOptions;
+import com.datastax.driver.core.PreparedStatement;
+import com.datastax.driver.core.ProtocolOptions.Compression;
 import com.datastax.driver.core.QueryOptions;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.SimpleStatement;
 import com.datastax.driver.core.SocketOptions;
 import com.datastax.driver.core.Statement;
-import com.datastax.driver.core.ProtocolOptions.Compression;
 
 public abstract class TestBase {
     protected static final String KEYSPACE_NAME = "mytest";
@@ -41,7 +43,7 @@ public abstract class TestBase {
 
     private void initDefaults() throws Exception {
         Cluster.Builder builder = Cluster.builder().addContactPoint(address);
-        //builder.addContactPoint("127.0.0.1");
+        // builder.addContactPoint("127.0.0.1");
         // builder.withClusterName("My Cassandra Cluster");
         SocketOptions so = new SocketOptions();
         // 设置一下这两个参数，避免在用eclipse进行debug代码时出现超时
@@ -58,6 +60,7 @@ public abstract class TestBase {
 
         QueryOptions queryOptions = new QueryOptions();
         queryOptions.setConsistencyLevel(ConsistencyLevel.ONE);
+        // queryOptions.setConsistencyLevel(ConsistencyLevel.EACH_QUORUM);
 
         builder.withQueryOptions(queryOptions);
 
@@ -67,10 +70,10 @@ public abstract class TestBase {
 
         session = cluster.connect();
         session.execute("CREATE KEYSPACE IF NOT EXISTS " + KEYSPACE_NAME + " WITH replication "
-                + "= {'class':'SimpleStrategy', 'replication_factor':1};");
+                + "= {'class':'SimpleStrategy', 'replication_factor':3};");
 
-        //        session.execute("CREATE KEYSPACE IF NOT EXISTS " + KEYSPACE_NAME + " WITH replication "
-        //                + "= {'class':'NetworkTopologyStrategy', 'DC1':2, 'DC2':1};");
+        // session.execute("CREATE KEYSPACE IF NOT EXISTS " + KEYSPACE_NAME + " WITH replication "
+        // + "= {'class':'NetworkTopologyStrategy', 'DC1':2, 'DC2':1};");
         session.execute("USE " + KEYSPACE_NAME);
     }
 
@@ -103,12 +106,16 @@ public abstract class TestBase {
         execute(cql);
     }
 
-    public void execute(String cql) {
-        session.execute(cql);
+    public PreparedStatement prepare(String cql) {
+        return session.prepare(cql);
     }
 
-    public void execute(Statement statement) {
-        session.execute(statement);
+    public ResultSet execute(String cql) {
+        return session.execute(cql);
+    }
+
+    public ResultSet execute(Statement statement) {
+        return session.execute(statement);
     }
 
     public void tryExecute() {
@@ -127,7 +134,7 @@ public abstract class TestBase {
         try {
             printResultSet();
         } catch (Exception e) {
-            System.out.println("***Exception***: " +e.getMessage());
+            System.out.println("***Exception***: " + e.getMessage());
         }
     }
 
@@ -140,12 +147,12 @@ public abstract class TestBase {
         for (Row row : rs)
             System.out.println(row);
     }
-    
+
     public void tryPrintResultSet(ResultSet rs) {
         try {
             printResultSet(rs);
         } catch (Exception e) {
-            System.out.println("***Exception***: " +e.getMessage());
+            System.out.println("***Exception***: " + e.getMessage());
         }
     }
 
@@ -196,5 +203,9 @@ public abstract class TestBase {
             System.out.println();
         }
         System.out.println();
+    }
+
+    public SimpleStatement newSimpleStatement(String cql) {
+        return session.newSimpleStatement(cql);
     }
 }
