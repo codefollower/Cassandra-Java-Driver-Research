@@ -59,8 +59,10 @@ public abstract class TestBase {
         builder.withPoolingOptions(po);
 
         QueryOptions queryOptions = new QueryOptions();
-        queryOptions.setConsistencyLevel(ConsistencyLevel.ONE);
+        queryOptions.setConsistencyLevel(ConsistencyLevel.QUORUM);
+        // queryOptions.setConsistencyLevel(ConsistencyLevel.ONE);
         // queryOptions.setConsistencyLevel(ConsistencyLevel.EACH_QUORUM);
+        // queryOptions.setFetchSize(100);
 
         builder.withQueryOptions(queryOptions);
 
@@ -140,6 +142,13 @@ public abstract class TestBase {
 
     public void printResultSet() {
         ResultSet results = session.execute(cql);
+        printResultSet(results);
+    }
+
+    public void printResultSet(int fetchSize) {
+        SimpleStatement stmt = newSimpleStatement(cql);
+        stmt.setFetchSize(fetchSize);
+        ResultSet results = session.execute(stmt);
         printResultSet(results);
     }
 

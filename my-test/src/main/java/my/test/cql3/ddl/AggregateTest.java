@@ -15,20 +15,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package my.test.cql3;
+package my.test.cql3.ddl;
 
 import my.test.TestBase;
 
-public class UserTest extends TestBase {
+public class AggregateTest extends TestBase {
+    String indexName;
+
     public static void main(String[] args) throws Exception {
-        new UserTest().start();
+        new AggregateTest().start();
     }
 
     @Override
     public void startInternal() throws Exception {
-        execute("CREATE USER UserTest WITH PASSWORD 'mypassword' SUPERUSER");
-        execute("ALTER USER UserTest WITH PASSWORD 'mypassword2' SUPERUSER");
-        execute("LIST USERS");
-        execute("DROP USER UserTest");
+
     }
+
 }

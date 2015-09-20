@@ -15,33 +15,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package my.test.cql3;
+package my.test.cql3.ddl;
 
 import my.test.TestBase;
 
-public class TriggerTest extends TestBase {
-
+public class RoleOrUserTest extends TestBase {
     public static void main(String[] args) throws Exception {
-        new TriggerTest().start();
+        new RoleOrUserTest().start();
     }
-
-    String triggerName;
 
     @Override
     public void startInternal() throws Exception {
-        tableName = "TriggerTest";
-        createTest();
-        dropTest();
-    }
-
-    void createTest() throws Exception {
-        triggerName = tableName + "_mytrigger";
-        //execute("DROP TABLE IF EXISTS " + tableName);
-        execute("CREATE TABLE IF NOT EXISTS " + tableName + " (pk int PRIMARY KEY, c text)");
-        execute("CREATE TRIGGER " + triggerName + " ON " + tableName + " USING 'my.test.trigger.MyTrigger'");
-    }
-
-    void dropTest() throws Exception {
-        execute("DROP TRIGGER " + triggerName + " ON " + tableName);
+        execute("CREATE USER UserTest WITH PASSWORD 'mypassword' SUPERUSER");
+        execute("ALTER USER UserTest WITH PASSWORD 'mypassword2' SUPERUSER");
+        execute("LIST USERS");
+        execute("DROP USER UserTest");
     }
 }

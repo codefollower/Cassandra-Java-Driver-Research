@@ -15,7 +15,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package my.test.cql3;
+package my.test.cql3.ddl;
 
 import my.test.TestBase;
 
